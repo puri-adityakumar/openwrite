@@ -34,12 +34,14 @@ The demo credentials on the landing page are visible by default
 ## Qodo Code Review Evidence
 
 Every substantive change lands through a pull request reviewed by the Qodo
-GitHub App before merge. The full Qodo review policy and install steps are
-in [QODO_REVIEW.md](QODO_REVIEW.md).
+GitHub App before merge. The full Qodo review policy and the install URL
+are in [QODO_REVIEW.md](QODO_REVIEW.md).
 
-Representative merged PRs and a 1–2 sentence summary of findings and
-resolutions will be linked here as Phase 0–7 PRs merge. (This section is
-updated in the same PR that lands each phase's work.)
+**Phase 0 bootstrap:** the Qodo App is not yet installed on this repo
+(requires a one-time human action in the Qodo portal). Phase 0 was pushed
+directly to `main` per the phase plan's install-steps-noted fallback. All
+Phase 1+ code will land through Qodo-reviewed PRs, and the first such PR
+will be linked here.
 
 ## AI use disclosure
 
