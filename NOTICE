@@ -1,0 +1,9 @@
+OpenWrite / Recap
+Copyright 2026 OpenWrite / Recap contributors
+
+This product includes software developed at
+https://github.com/puri-adityakumar/openwrite
+
+Built for the WeMakeDevs × TrueFoundry Agent Harness Hackathon (Savile Row track).
+The TrueForge server runs in Docker alongside this app; see THIRD_PARTY_NOTICES
+in LICENSES.thirdparty.txt for upstream license texts.

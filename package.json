@@ -1,0 +1,35 @@
+{
+  "name": "openwrite",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "dev": "next dev -p 13000",
+    "build": "next build",
+    "start": "next start -p 13000",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "parity": "tsx scripts/parity.ts",
+    "demo": "tsx scripts/demo.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/puri-adityakumar/openwrite.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/puri-adityakumar/openwrite/issues"
+  },
+  "homepage": "https://github.com/puri-adityakumar/openwrite#readme",
+  "devDependencies": {
+    "vitest": "^4.1.11"
+  }
+}

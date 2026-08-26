@@ -54,8 +54,8 @@ TrueForge's — no collision (verified against TrueForge's `listTurnEvents` /
 
 | # | Decision | Options | Default (recommended) |
 |---|---|---|---|
-| D1 | Route name | `/paper/:slug` vs `/notebook/:slug` | **`/paper/:slug`** — v9 standardized on `Paper` because the product verb is "to recap a paper" |
-| D2 | Demo creds on landing | visible plaintext vs "Show demo creds" toggle | **visible** (`demo@local / demo1234`) — removes one step for tired judges |
+| D1 | Route name | `/paper/:slug` vs `/notebook/:slug` | **LOCKED: `/paper/:slug`** — v9 standardized on `Paper` because the product verb is "to recap a paper" |
+| D2 | Demo creds on landing | visible plaintext vs "Show demo creds" toggle | **LOCKED: visible** (`demo@local / demo1234`) — removes one step for tired judges |
 
 The orchestrator records the final call in this table (edit the Default column to
 "LOCKED: <choice>") during Phase 0, Sub-phase 0.1, then propagates the choice

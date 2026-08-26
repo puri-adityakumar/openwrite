@@ -1,0 +1,24 @@
+Third-Party Notices
+===================
+
+This project depends on the following open-source components. Upstream license
+texts are reproduced below for compliance. This list is updated as dependencies
+are added in subsequent phases.
+
+1. TrueForge (truefoundry/trueforge) — Apache License 2.0
+   The TrueForge server runs locally in Docker; the source license is at
+   https://github.com/truefoundry/trueforge/blob/main/LICENSE
+
+2. Next.js (vercel/next.js) — MIT License
+   https://github.com/vercel/next.js/blob/canary/LICENSE
+
+3. Vitest (vitest-dev/vitest) — MIT License
+   https://github.com/vitest-dev/vitest/blob/main/LICENSE
+
+4. Playwright (microsoft/playwright) — Apache License 2.0
+   https://github.com/microsoft/playwright/blob/main/LICENSE
+
+5. Tailwind CSS (tailwindlabs/tailwindcss) — MIT License
+   https://github.com/tailwindlabs/tailwindcss/blob/master/LICENSE
+
+Additional dependencies will be appended here in the PR that introduces them.
