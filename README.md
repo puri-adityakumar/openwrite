@@ -37,11 +37,17 @@ Every substantive change lands through a pull request reviewed by the Qodo
 GitHub App before merge. The full Qodo review policy and the install URL
 are in [QODO_REVIEW.md](QODO_REVIEW.md).
 
+**First PR (awaiting Qodo review):** [chore(deps): install tsx so parity
+and demo scripts resolve to a real binary](https://github.com/puri-adityakumar/openwrite/pull/1)
+— opened on the `chore/install-tsx` branch, sitting open until the Qodo
+GitHub App is installed at https://github.com/apps/qodo-merge/installations/new.
+Once reviewed and merged, this section will be updated with a 1–2 sentence
+summary of findings and resolutions.
+
 **Phase 0 bootstrap:** the Qodo App is not yet installed on this repo
 (requires a one-time human action in the Qodo portal). Phase 0 was pushed
 directly to `main` per the phase plan's install-steps-noted fallback. All
-Phase 1+ code will land through Qodo-reviewed PRs, and the first such PR
-will be linked here.
+Phase 1+ code will land through Qodo-reviewed PRs.
 
 ## AI use disclosure
 

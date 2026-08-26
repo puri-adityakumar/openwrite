@@ -26,9 +26,10 @@ PR-Agent (see https://docs.pr-agent.ai).
 
 - **App installed on `puri-adityakumar/openwrite`:** _pending — requires a
   one-time human action in the browser via the install URL above_.
-- **First Qodo-reviewed PR:** will be linked in this file and in
-  `README.md` → `## Qodo Code Review Evidence` once the App is installed
-  and the first Phase 1+ PR is reviewed and merged.
+- **First PR (open, awaiting Qodo review):**
+  [#1 — chore(deps): install tsx](https://github.com/puri-adityakumar/openwrite/pull/1)
+  on branch `chore/install-tsx`. The moment the Qodo App is installed, it
+  will review this PR automatically.
 - **Phase 0 bootstrap commits** were pushed directly to `main` to establish
   the repo. Per `docs/plan/phase-0-decisions-and-scaffold.md` sub-phase 0.2
   verification line, the install steps being executed and noted satisfies
