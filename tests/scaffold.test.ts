@@ -75,4 +75,16 @@ describe("Phase 0 scaffold", () => {
     const readme = readFileSync(resolve(ROOT, "README.md"), "utf8");
     expect(readme.toLowerCase()).toContain("qodo_review.md");
   });
+
+  it("Vitest and Playwright configs exist (Phase 0.3 test harness)", () => {
+    expect(existsSync(resolve(ROOT, "vitest.config.ts"))).toBe(true);
+    expect(existsSync(resolve(ROOT, "playwright.config.ts"))).toBe(true);
+  });
+
+  it("Playwright config defines the judge-ipad WebKit project at 1024x768", () => {
+    const cfg = readFileSync(resolve(ROOT, "playwright.config.ts"), "utf8");
+    expect(cfg).toMatch(/name:\s*["']judge-ipad["']/);
+    expect(cfg).toMatch(/width:\s*1024/);
+    expect(cfg).toMatch(/height:\s*768/);
+  });
 });

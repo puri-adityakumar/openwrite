@@ -5,7 +5,7 @@ phase exit.
 
 | Risk | Mitigation | Owning phase |
 |---|---|---|
-| QODO_REVIEW.md placement and demo callout | Created at first commit. Linked from README. Called out in the "Powered by" demo beat (0:30). | 0, 7 |
+| QODO_REVIEW.md placement and demo callout | **MITIGATED (Phase 0.2):** QODO_REVIEW.md present at repo root, linked from README's `## Qodo Code Review Evidence` heading, and contains the Qodo App install steps. Demo beat (0:30) still pending — Phase 7. | 0, 7 |
 | Seeded `seed_audits` drifts from the live path | `npm run parity` asserts seed-vs-live schema drift. Part of the Saturday cold-judge test. | 1, 6 |
 | iPad-stage demo fragility | Saturday rehearsal + second-device check (Safari 1024×768, < 2 s first-paint render). | 6, 7 |
 | Approval TTL expiry | Countdown visible. Deny-on-expiry handler. "Approval expired — restart verification." | 4 |
