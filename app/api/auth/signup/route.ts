@@ -14,7 +14,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { hashPassword, signSession, SESSION_COOKIE_NAME, SESSION_TTL_SECONDS } from "../../../../lib/auth";
 import { query } from "../../../../lib/db";
 import { isValidPassword } from "../../../../lib/passwordPolicy";
-import { checkRateLimit, clientIp } from "../../../../lib/rateLimit";
+import { checkRateLimit, clientIdentity } from "../../../../lib/rateLimit";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -47,8 +47,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return bad();
   }
 
-  const identity = `${clientIp(req)}|${email}`;
-  const rl = await checkRateLimit("signup", identity);
+  const identity = clientIdentity();
+  // Two independent counters (Qodo bug "unique emails bypass signup limit"):
+  // one keyed by the client identity and one by the email alone. The route
+  // is blocked if EITHER counter exceeds its limit.
+  const rl = await checkRateLimit("signup", [identity, email]);
   if (!rl.allowed) return tooManyRequests(rl.resetMs);
 
   // Check email existence first so duplicate signups don't pay the bcrypt cost.

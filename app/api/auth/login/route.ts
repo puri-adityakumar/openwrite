@@ -16,7 +16,7 @@ import bcrypt from "bcryptjs";
 import { verifyPassword, signSession, SESSION_COOKIE_NAME, SESSION_TTL_SECONDS } from "../../../../lib/auth";
 import { query } from "../../../../lib/db";
 import { isValidPassword } from "../../../../lib/passwordPolicy";
-import { checkRateLimit, clientIp } from "../../../../lib/rateLimit";
+import { checkRateLimit, clientIdentity } from "../../../../lib/rateLimit";
 
 // A real bcrypt cost-10 hash computed once at import time. The plaintext is
 // irrelevant (we never compare against it via a known match); what matters
@@ -52,8 +52,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   if (!email || !isValidPassword(password)) return unauthorized();
 
-  const identity = `${clientIp(req)}|${email}`;
-  const rl = await checkRateLimit("login", identity);
+  const identity = clientIdentity();
+  // Two independent counters: client identity AND email. Either exceeding
+  // its limit blocks the request — rotating one without the other cannot
+  // bypass the limiter.
+  const rl = await checkRateLimit("login", [identity, email]);
   if (!rl.allowed) return tooManyRequests(rl.resetMs);
 
   let row: { id: string; email: string; password_hash: string } | undefined;

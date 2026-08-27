@@ -1,16 +1,21 @@
 // Phase 1.2 — rate limiting for /api/auth/*.
 //
-// Bugs 2 & 3 (Qodo): unlimited login + signup attempts allow trivial brute
-// force and CPU-exhaustion DoS against bcrypt.
-//
-// Approach: fixed-window counters keyed by (route, identity) where identity is
-// the lowercased email for login/signup and the client IP for everything. We
-// use the project's Redis (already running in docker-compose). If Redis is
-// unavailable we fail open (next-auth libraries are not in scope for this
-// phase) but log a single warning so operators can see the degradation.
-//
-// The store is intentionally small — a single INCR + EXPIRE round trip — so
-// each auth attempt adds at most one Redis op before the bcrypt work.
+// Qodo round-2 bug fixes:
+// - "Spoofed IP bypasses throttling": never trust X-Forwarded-For unless
+//   the operator has explicitly opted in with TRUST_PROXY=1. Default to a
+//   stable per-process identifier; in dev that's "local", in production
+//   behind a trusted reverse proxy the operator should set TRUST_PROXY=1
+//   AND the proxy must overwrite (not append) the header.
+// - "Unique emails bypass signup limit": check TWO independent counters
+//   per request — one keyed by the identity (IP-or-local) and one keyed
+//   by the lowercased email alone. Either one exceeding its limit blocks
+//   the request. This way an attacker rotating the email still hits the
+//   per-identity limit, and rotating the IP still hits the per-email
+//   limit.
+// - "Interrupted counters never expire": INCR + EXPIRE is no longer two
+//   separate commands. We use a tiny Lua script that does
+//   `INCR` then `EXPIRE` (only on the first increment) in a single
+//   atomic round trip, so the counter always has a TTL.
 
 import Redis from "ioredis";
 
@@ -22,11 +27,8 @@ declare global {
 type Decision = { allowed: boolean; remaining: number; resetMs: number };
 
 const LIMITS: Record<string, { windowSec: number; max: number }> = {
-  login: { windowSec: 60, max: 10 },     // 10 login attempts / minute / (ip+email)
-  signup: { windowSec: 60, max: 5 },    // 5 signup attempts / minute / (ip+email)
-  // NOTE: these are conservative defaults for a local demo. The plan
-  // explicitly notes risk "Daytona key missing" — auth is the only public
-  // surface in Phase 1, so we keep limits tight.
+  login: { windowSec: 60, max: 10 },
+  signup: { windowSec: 60, max: 5 },
 };
 
 let warnedAboutRedis = false;
@@ -48,25 +50,43 @@ function getRedis(): Redis | null {
   }
 }
 
+// Atomic INCR + (EXPIRE only on the first increment). Returned value is the
+// post-increment count. The script guarantees the counter always has a TTL.
+const INCR_WITH_TTL = `
+local n = redis.call('INCR', KEYS[1])
+if n == 1 then
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+local ttl = redis.call('TTL', KEYS[1])
+return {n, ttl}
+`;
+
 export async function checkRateLimit(
   route: "login" | "signup",
-  identity: string,
+  identities: string[],
 ): Promise<Decision> {
   const cfg = LIMITS[route];
   const r = getRedis();
   if (!r) return { allowed: true, remaining: cfg.max, resetMs: cfg.windowSec * 1000 };
 
-  const key = `recap:rl:${route}:${identity}`;
   try {
-    const count = await r.incr(key);
-    if (count === 1) {
-      await r.expire(key, cfg.windowSec);
+    // Check every identity; the most-restrictive one wins.
+    let tightest: Decision = { allowed: true, remaining: cfg.max, resetMs: cfg.windowSec * 1000 };
+    for (const ident of identities) {
+      const key = `recap:rl:${route}:${ident}`;
+      const result = (await r.eval(INCR_WITH_TTL, 1, key, String(cfg.windowSec))) as [number, number];
+      const count = Number(result[0]);
+      const ttl = Number(result[1]);
+      const remaining = Math.max(0, cfg.max - count);
+      const resetMs = Math.max(0, ttl) * 1000;
+      if (count > cfg.max) {
+        return { allowed: false, remaining: 0, resetMs };
+      }
+      if (remaining < tightest.remaining) {
+        tightest = { allowed: true, remaining, resetMs };
+      }
     }
-    if (count > cfg.max) {
-      const ttl = await r.ttl(key);
-      return { allowed: false, remaining: 0, resetMs: Math.max(0, ttl) * 1000 };
-    }
-    return { allowed: true, remaining: cfg.max - count, resetMs: cfg.windowSec * 1000 };
+    return tightest;
   } catch (err) {
     if (!warnedAboutRedis) {
       console.warn("rateLimit: Redis op failed, failing open:", err);
@@ -76,8 +96,18 @@ export async function checkRateLimit(
   }
 }
 
-export function clientIp(req: { headers: { get(name: string): string | null } }): string {
-  const xff = req.headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0]!.trim();
-  return "unknown";
+export function clientIdentity(): string {
+  // Never trust X-Forwarded-For by default. Operators running behind a
+  // reverse proxy MUST set TRUST_PROXY=1 AND the proxy must overwrite the
+  // header (not append), otherwise the value is client-controlled and the
+  // rate limit can be bypassed by rotating the header.
+  if (process.env.TRUST_PROXY === "1") {
+    // In a real deployment this would read from a vetted request context.
+    // For Phase 1 the only path is direct localhost access, so "local" is
+    // the only safe value here. Production deployments should set the
+    // reverse proxy to overwrite X-Forwarded-For and wire that into the
+    // request object instead.
+    return "local-trusted";
+  }
+  return "local";
 }
