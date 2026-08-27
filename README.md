@@ -37,20 +37,22 @@ Every substantive change lands through a pull request reviewed by the Qodo
 GitHub App before merge. The full Qodo review policy and the install URL
 are in [QODO_REVIEW.md](QODO_REVIEW.md).
 
-**First PR (reviewed, awaiting merge):** [chore(deps): install tsx so
-parity and demo scripts resolve to a real
-binary](https://github.com/puri-adityakumar/openwrite/pull/1) on branch
-`chore/install-tsx`. Qodo posted a `COMMENTED` review with **1 bug
-finding** about the install-trigger wording in `QODO_REVIEW.md` and
-`README.md` (the docs claimed App install alone would trigger the review;
-it doesn't — the correct triggers are PR open / reopen / ready-for-review,
-or the `/agentic_review` comment fallback). The fix is committed on the
-same branch in a follow-up commit; squash-merge pending.
+**First PR (merged):** [#1 — chore(deps): install tsx so parity and demo
+scripts resolve to a real
+binary](https://github.com/puri-adityakumar/openwrite/pull/1), squash-merged
+as `e7f39e0`. Qodo posted a `COMMENTED` review with **1 bug finding** about
+the install-trigger wording in `QODO_REVIEW.md` and `README.md` (the docs
+claimed App install alone would trigger the review; it doesn't — the
+correct triggers are PR open / reopen / ready-for-review, or the
+`/agentic_review` comment fallback). The fix is in commit `0b936bd` on the
+same branch and the re-review marked the bug ✓ Resolved. The branch
+`chore/install-tsx` was deleted on merge.
 
-**Phase 0 bootstrap:** the four initial commits on `main` were pushed
-directly to establish the repo, per the phase plan's install-steps-noted
-fallback (`docs/plan/phase-0-decisions-and-scaffold.md` sub-phase 0.2
-verification). All subsequent code lands through Qodo-reviewed PRs.
+**Phase 0 bootstrap:** the four initial commits on `main` (`a203040`,
+`1ed94ba`, `173ceda`, `a734b64`) were pushed directly to establish the
+repo, per the phase plan's install-steps-noted fallback
+(`docs/plan/phase-0-decisions-and-scaffold.md` sub-phase 0.2 verification).
+All subsequent code lands through Qodo-reviewed PRs.
 
 ## AI use disclosure
 
