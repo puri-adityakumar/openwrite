@@ -37,17 +37,20 @@ Every substantive change lands through a pull request reviewed by the Qodo
 GitHub App before merge. The full Qodo review policy and the install URL
 are in [QODO_REVIEW.md](QODO_REVIEW.md).
 
-**First PR (awaiting Qodo review):** [chore(deps): install tsx so parity
-and demo scripts resolve to a real binary](https://github.com/puri-adityakumar/openwrite/pull/1)
-— opened on the `chore/install-tsx` branch, sitting open until the Qodo
-GitHub App is installed at https://github.com/apps/qodo-merge/installations/new.
-Once reviewed and merged, this section will be updated with a 1–2 sentence
-summary of findings and resolutions.
+**First PR (reviewed, awaiting merge):** [chore(deps): install tsx so
+parity and demo scripts resolve to a real
+binary](https://github.com/puri-adityakumar/openwrite/pull/1) on branch
+`chore/install-tsx`. Qodo posted a `COMMENTED` review with **1 bug
+finding** about the install-trigger wording in `QODO_REVIEW.md` and
+`README.md` (the docs claimed App install alone would trigger the review;
+it doesn't — the correct triggers are PR open / reopen / ready-for-review,
+or the `/agentic_review` comment fallback). The fix is committed on the
+same branch in a follow-up commit; squash-merge pending.
 
-**Phase 0 bootstrap:** the Qodo App is not yet installed on this repo
-(requires a one-time human action in the Qodo portal). Phase 0 was pushed
-directly to `main` per the phase plan's install-steps-noted fallback. All
-Phase 1+ code will land through Qodo-reviewed PRs.
+**Phase 0 bootstrap:** the four initial commits on `main` were pushed
+directly to establish the repo, per the phase plan's install-steps-noted
+fallback (`docs/plan/phase-0-decisions-and-scaffold.md` sub-phase 0.2
+verification). All subsequent code lands through Qodo-reviewed PRs.
 
 ## AI use disclosure
 
