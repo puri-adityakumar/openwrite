@@ -36,12 +36,21 @@ services:
     restart: unless-stopped
 
   # Serves both the API and the UI on one port.
+  # Gated behind the `trueforge` profile so a default `docker compose up` (which
+  # only needs Postgres + Redis + the recap-db-init sidecar to render the
+  # cockpit first paint from `seed_audits`) does not require an external
+  # TrueForge source checkout. To bring the full server up:
+  #   docker compose --profile trueforge up
+  # and provide TF_SOURCE_DIR (defaults to ../trueforge) so the build context
+  # resolves. The default quickstart path therefore respects the standing
+  # constraint that `docker compose up` is the only setup command.
   server:
+    profiles: ["trueforge"]
     build:
-      # Path is relative to this compose file. Default is `.` (the TrueForge
-      # source root). Recap vendors this file and expects the TrueForge
-      # checkout to be at ../trueforge relative to the repo root. To override
-      # locally, set TF_SOURCE_DIR or edit this `context` line.
+      # Path is relative to this compose file. Default is `../trueforge` (the
+      # TrueForge source root, expected as a sibling of the recap repo).
+      # Override with TF_SOURCE_DIR=/abs/path/to/trueforge if your checkout
+      # lives elsewhere.
       context: ${TF_SOURCE_DIR:-../trueforge}
       dockerfile: Dockerfile.dev
     image: truefoundry-server:latest
