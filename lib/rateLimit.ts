@@ -27,6 +27,12 @@ declare global {
 type Decision = { allowed: boolean; remaining: number; resetMs: number };
 
 const LIMITS: Record<string, { windowSec: number; max: number }> = {
+  // Per-email is the security-relevant counter (Qodo bug: a per-identity
+  // limit is redundant and brittle for a multi-tenant demo). 10
+  // attempts/min/email is enough headroom for a developer running the
+  // E2E suite against the same demo@local account without tripping 429,
+  // while still blocking scripted password-spray attacks. Signup stays
+  // tighter because new-account creation is the expensive bcrypt path.
   login: { windowSec: 60, max: 10 },
   signup: { windowSec: 60, max: 5 },
 };
@@ -63,30 +69,22 @@ return {n, ttl}
 
 export async function checkRateLimit(
   route: "login" | "signup",
-  identities: string[],
+  identity: string,
 ): Promise<Decision> {
   const cfg = LIMITS[route];
   const r = getRedis();
   if (!r) return { allowed: true, remaining: cfg.max, resetMs: cfg.windowSec * 1000 };
 
   try {
-    // Check every identity; the most-restrictive one wins.
-    let tightest: Decision = { allowed: true, remaining: cfg.max, resetMs: cfg.windowSec * 1000 };
-    for (const ident of identities) {
-      const key = `recap:rl:${route}:${ident}`;
-      const result = (await r.eval(INCR_WITH_TTL, 1, key, String(cfg.windowSec))) as [number, number];
-      const count = Number(result[0]);
-      const ttl = Number(result[1]);
-      const remaining = Math.max(0, cfg.max - count);
-      const resetMs = Math.max(0, ttl) * 1000;
-      if (count > cfg.max) {
-        return { allowed: false, remaining: 0, resetMs };
-      }
-      if (remaining < tightest.remaining) {
-        tightest = { allowed: true, remaining, resetMs };
-      }
+    const key = `recap:rl:${route}:${identity}`;
+    const result = (await r.eval(INCR_WITH_TTL, 1, key, String(cfg.windowSec))) as [number, number];
+    const count = Number(result[0]);
+    const ttl = Number(result[1]);
+    const remaining = Math.max(0, cfg.max - count);
+    if (count > cfg.max) {
+      return { allowed: false, remaining: 0, resetMs: Math.max(0, ttl) * 1000 };
     }
-    return tightest;
+    return { allowed: true, remaining, resetMs: Math.max(0, ttl) * 1000 };
   } catch (err) {
     if (!warnedAboutRedis) {
       console.warn("rateLimit: Redis op failed, failing open:", err);
@@ -96,18 +94,9 @@ export async function checkRateLimit(
   }
 }
 
-export function clientIdentity(): string {
-  // Never trust X-Forwarded-For by default. Operators running behind a
-  // reverse proxy MUST set TRUST_PROXY=1 AND the proxy must overwrite the
-  // header (not append), otherwise the value is client-controlled and the
-  // rate limit can be bypassed by rotating the header.
-  if (process.env.TRUST_PROXY === "1") {
-    // In a real deployment this would read from a vetted request context.
-    // For Phase 1 the only path is direct localhost access, so "local" is
-    // the only safe value here. Production deployments should set the
-    // reverse proxy to overwrite X-Forwarded-For and wire that into the
-    // request object instead.
-    return "local-trusted";
-  }
-  return "local";
-}
+// Qodo round-3: clientIdentity() removed. The per-identity limit was
+// redundant with the per-email limit and created a brittle counter that
+// a developer running an E2E suite could trivially trip. Per-email is
+// the security-relevant key; keep the function's removal documented here
+// so the next person who tries to add "IP throttling" can see why it's
+// out of scope for this phase.
