@@ -6,6 +6,11 @@
 /.next/
 /out/
 
+# Playwright artifacts
+/test-results/
+/playwright-report/
+/playwright/.cache/
+
 # Env
 .env
 .env.local
