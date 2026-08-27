@@ -76,6 +76,23 @@ CREATE TABLE IF NOT EXISTS gates (
 CREATE INDEX IF NOT EXISTS gates_paper_id_created_at_idx
     ON gates(paper_id, created_at DESC);
 
+-- 5b. claims (Phase 3) -------------------------------------------------
+-- Per-claim rows: text, evidence quote, confidence, anchor (page),
+-- authors. The Claims tab renders from this; Reader opens at anchor.
+CREATE TABLE IF NOT EXISTS claims (
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    paper_id      uuid NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+    text          text NOT NULL,
+    evidence      text,
+    confidence    real,
+    page          integer,
+    authors       text[],
+    created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS claims_paper_id_created_at_idx
+    ON claims(paper_id, created_at DESC);
+
 -- 6. seed_audits (first-paint populated demo) -----------------------------
 -- The seed_audits table renders the cockpit on first paint. Its event shape
 -- MUST match the live `audit` table's event shape — enforced by

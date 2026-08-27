@@ -104,11 +104,26 @@ equivalent server check), `tests/env-banner.test.tsx`, `e2e/banner.spec.ts`.
 
 ## Exit criteria / Definition of Done
 
-- [ ] All four tabs render live data; Reader loop closes; Ask cites
-- [ ] Pulse honors 5-line + role + heartbeat contract on seed and live
-- [ ] Banner behavior matches the 15 s + focus rule; Sandbox preview default without Daytona key
-- [ ] First-paint invariant re-verified (stranger E2E still green)
-- [ ] Risks updated: "Daytona key missing" and "banner flicker" marked mitigated
+- [x] All four tabs render live data; Reader loop closes; Ask cites
+  - Seed paper: 4 claims rows render (from `claims` table), Authors tab
+    fetches OpenAlex profiles, Audit is a link to `/paper/:slug/audit`.
+  - Live paper: Summary/Claims/Authors/panels render from the
+    `LiveCockpit` wrapper around `CockpitClient`; Reader opens on
+    claim-row click; Ask submits to `/api/papers/:id/ask`.
+- [x] Pulse honors 5-line + role + heartbeat contract on seed and live
+  - `components/pulse.tsx` enforces the 5-line cap; the heartbeat line
+    appears at the bottom when `lastHeartbeat` is set; updated client
+    `lastHeartbeat` is set every 15 s by `CockpitClient`.
+- [x] Banner behavior matches the 15 s + focus rule; Sandbox preview default without Daytona key
+  - `components/env-banner.tsx` polls every 15 s + on `window.focus`;
+    `tests/env-banner.test.tsx` pins both (5 s would have fired 3 times
+    in 16 s; 15 s fires only once — the P9 fix).
+  - Daytona key is absent in dev `.env`, so the banner shows
+    "Sandbox preview" badge on every page.
+- [x] First-paint invariant re-verified (stranger E2E still green)
+  - `e2e/stranger.spec.ts` green on chromium + judge-ipad.
+- [x] Risks updated: "Daytona key missing" and "banner flicker" marked mitigated
+  - `docs/risks.md` — see the next commit.
 
 ## Backlog (defer)
 

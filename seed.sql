@@ -101,3 +101,41 @@ VALUES (
     }'::jsonb
 )
 ON CONFLICT (paper_id) DO UPDATE SET events = EXCLUDED.events;
+
+-- 4. seed_claims (Phase 3) ---------------------------------------------
+-- Per-claim rows for the demo paper. The Claims tab renders from this;
+-- the Authors tab pulls author names from the same rows. The fixture
+-- data matches the seed paper (Attention Is All You Need).
+INSERT INTO claims (paper_id, text, evidence, confidence, page, authors)
+SELECT
+    (SELECT id FROM papers WHERE slug = 'attention-is-all-you-need'),
+    c.text, c.evidence, c.confidence, c.page, c.authors
+FROM (VALUES
+    (
+        'Self-attention outperforms recurrence and convolution on sequence transduction.',
+        'The Transformer achieves 28.4 BLEU on WMT 2014 EN-DE, improving over the existing best results by over 2 BLEU.',
+        0.94, 1,
+        ARRAY['Vaswani','Shazeer','Parmar','Uszkoreit','Jones','Gomez','Kaiser','Polosukhin']
+    ),
+    (
+        'Multi-head attention allows the model to attend to information from different representation subspaces.',
+        'We employ h=8 parallel attention heads. Each head projects to d_k = d_v = 64 dimensions.',
+        0.91, 3,
+        ARRAY['Vaswani','Shazeer','Parmar','Uszkoreit']
+    ),
+    (
+        'Scaled dot-product attention divides the dot products by sqrt(d_k) to counteract the softmax saturation.',
+        'We suspect that for large values of d_k, the dot products grow large in magnitude, pushing the softmax function into regions where it has extremely small gradients. To counteract this, we scale the dot products by 1/sqrt(d_k).',
+        0.97, 4,
+        ARRAY['Vaswani','Shazeer']
+    ),
+    (
+        'Training is parallelizable and requires substantially less time to train than recurrent architectures.',
+        'Training took about 12 hours on 8 P100 GPUs for the base model. The big model took 3.5 days.',
+        0.88, 8,
+        ARRAY['Vaswani','Shazeer','Parmar']
+    )
+) AS c(text, evidence, confidence, page, authors)
+WHERE NOT EXISTS (
+    SELECT 1 FROM claims WHERE paper_id = (SELECT id FROM papers WHERE slug = 'attention-is-all-you-need')
+);

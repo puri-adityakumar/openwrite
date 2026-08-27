@@ -1,17 +1,15 @@
-// Phase 2.1 — /paper/[slug]. Guarded. If the paper has a session_id
-// (a live run was started via /api/agent/start), render the live
-// cockpit which opens an SSE connection to /api/agent/stream. Otherwise
-// fall back to the seed render path from Phase 1.3 (no live session =
-// use seed_audits).
-//
-// Plan: "when the paper's session is absent, render from seed_audits".
-// Live-session rendering is wired in Phase 2.
+// Phase 3 — /paper/[slug]. Guarded. Splits into the live path
+// (paper has session_id + turn_id) and the seed path (no session,
+// render from seed_audits + seed claims). Both paths hand off to
+// CockpitClient.
 
 import { notFound } from "next/navigation";
 import { requireUser } from "../../../lib/session";
 import { query } from "../../../lib/db";
-import { Cockpit, type SeedEvents } from "../../../components/Cockpit";
+import { CockpitClient } from "../../../components/CockpitClient";
+import { deriveTrail, initialState } from "../../../lib/event-reducer";
 import { LiveCockpit } from "../../../components/LiveCockpit";
+import type { SeedEvents } from "../../../components/Cockpit";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +20,7 @@ type PaperRow = {
   status: string;
   session_id: string | null;
   turn_id: string | null;
+  source_pdf: string | null;
 };
 type SeedRow = { events: SeedEvents };
 
@@ -34,27 +33,28 @@ export default async function PaperPage({
   const { slug } = await params;
 
   const paperResult = await query<PaperRow>(
-    `SELECT id, slug, title, status, session_id, turn_id FROM papers
-     WHERE slug = $1 AND user_id = $2
-     LIMIT 1`,
+    `SELECT id, slug, title, status, session_id, turn_id, source_pdf
+     FROM papers WHERE slug = $1 AND user_id = $2 LIMIT 1`,
     [slug, user.sub],
   );
   const paper = paperResult.rows[0];
   if (!paper) notFound();
 
-  // Live path: paper has a session — render LiveCockpit which opens the SSE.
+  // Live path: paper has a session — render the live SSE cockpit.
   if (paper.session_id && paper.turn_id) {
     const streamUrl = `/api/agent/stream?sessionId=${encodeURIComponent(paper.session_id)}&turnId=${encodeURIComponent(paper.turn_id)}&paperId=${encodeURIComponent(paper.id)}`;
     return (
       <LiveCockpit
         slug={paper.slug}
         title={paper.title ?? paper.slug}
+        paperId={paper.id}
         streamUrl={streamUrl}
+        pdfUrl={paper.source_pdf ? `/api/papers/${paper.id}/pdf` : null}
       />
     );
   }
 
-  // Seed path: no live session — fall back to the Phase 1.3 renderer.
+  // Seed path.
   const seedResult = await query<SeedRow>(
     `SELECT events FROM seed_audits WHERE paper_id = $1 LIMIT 1`,
     [paper.id],
@@ -71,5 +71,28 @@ export default async function PaperPage({
     );
   }
 
-  return <Cockpit slug={paper.slug} title={paper.title ?? paper.slug} status={paper.status} events={seed.events} />;
+  const initial = initialState();
+  const pills = deriveTrail(initial);
+  // The seed paper's Pulse lines live in seed_audits.events.pulse; we
+  // surface them so the first paint looks the same as the old
+  // (pre-Tabs) cockpit. The live path replaces them with real SSE events.
+  const liveState = {
+    ...initial,
+    status: "done" as const,
+    pulse: seed.events.pulse,
+  };
+  // Mark every Trail pill as done for the seed render — the run is complete.
+  const donePills = pills.map((p) => ({ ...p, state: "done" as const }));
+  return (
+    <CockpitClient
+      slug={paper.slug}
+      title={paper.title ?? paper.slug}
+      paperId={paper.id}
+      pills={donePills}
+      coverage={seed.events.coverage.pages}
+      liveState={liveState}
+      summary={seed.events.summary}
+      pdfUrl={paper.source_pdf ? `/api/papers/${paper.id}/pdf` : null}
+    />
+  );
 }
