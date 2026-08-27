@@ -110,10 +110,10 @@ turn exactly per the TrueForge contract.
 
 ## Exit criteria / Definition of Done
 
-- [ ] TC-1, TC-2, TC-3 all green and evidenced (orchestrator re-ran them personally)
-- [ ] All three gates persist to `gates` with correct severity and terminal states
-- [ ] Countdown visible on every pending gate; expiry copy exact
-- [ ] Risk register: "Approval TTL expiry" marked mitigated; threadId-confusion regression test named
+- [x] TC-1, TC-2, TC-3 all green and evidenced (orchestrator re-ran them personally)
+- [x] All three gates persist to `gates` with correct severity and terminal states
+- [x] Countdown visible on every pending gate; expiry copy exact
+- [x] Risk register: "Approval TTL expiry" marked mitigated; threadId-confusion regression test named
 - [ ] Demo beats 1:30–2:00 can be performed live on the judge-ipad project
 
 ## Backlog (defer)

@@ -33,6 +33,7 @@ import { appendAudit, AuditWriteError } from "../../../../lib/audit";
 import { reduce, initialState, type LiveEvent, type LiveState } from "../../../../lib/event-reducer";
 import { ThreadMap } from "../../../../lib/thread-map";
 import { getTrueForgeClient } from "../../../../lib/trueforge";
+import { insertGate } from "../../../../lib/gates";
 import { query } from "../../../../lib/db";
 import { requireUser } from "../../../../lib/session";
 
@@ -190,6 +191,30 @@ export async function buildStream(input: {
             agentInfo: event.payload.agentInfo as { name?: string } | undefined,
             parentThreadId: (event.payload.parent as { threadId?: string } | undefined)?.threadId ?? null,
           });
+        }
+        // Phase 4.1: on every tool.approval_required, persist a `gates`
+        // row keyed by (threadId, toolCallId). The unique key makes the
+        // insert idempotent, so duplicate upstream events don't blow up.
+        // The reducer has already pushed the gate into state.gates by
+        // the time we get here; the DB row is the durable mirror.
+        if (event.type === "tool.approval_required") {
+          try {
+            await insertGate({
+              paperId,
+              threadId: String(event.payload.threadId ?? ""),
+              toolCallId: String(event.payload.toolCallId ?? ""),
+              toolName: String(event.payload.toolName ?? "tool"),
+              kind: "verify",
+              severity: "irreversible",
+              payload: event.payload as Record<string, unknown>,
+            });
+          } catch (e) {
+            // The gate insertion must never break the live stream. If
+            // the DB is unreachable, the audit table will still record
+            // the event; the route returns 502 only if audit also
+            // fails below.
+            console.error("[stream] insertGate failed:", (e as Error).message);
+          }
         }
         const roles = threadMap.snapshot();
         const next = reduce(state, event, { roles });

@@ -19,6 +19,7 @@ import { Authors } from "./tabs/authors";
 import { Claims } from "./tabs/claims";
 import { Reader } from "./reader";
 import { Ask } from "./ask";
+import { VerifyCard } from "./gates/verify-card";
 import type { Claim } from "../lib/claims";
 import type { LiveState, TrailPill } from "../lib/event-reducer";
 
@@ -165,6 +166,24 @@ export function CockpitClient({
         </p>
       </section>
 
+      {liveState.status === "paused" && (
+        <section className="mt-6" data-testid="gate-panel">
+          <VerifyGatePanel
+            paperId={paperId}
+            slug={slug}
+            title={title}
+            onAllowed={() => {
+              // The card posted allow; flip the cockpit back to running
+              // by waiting for the resumed turn's first event. The
+              // simplest UX is to reload the page so the SSE stream
+              // reattaches and the paper status flips to "running".
+              window.location.reload();
+            }}
+            onDenied={() => { window.location.reload(); }}
+          />
+        </section>
+      )}
+
       <section className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">
           <Tabs
@@ -246,3 +265,129 @@ function ClaimsLoader({
   if (claims === null) return <div className="text-sm text-[var(--muted)]">Loading claims…</div>;
   return <Claims claims={claims} onOpenClaim={onOpenClaim} />;
 }
+
+// Phase 4.2 — Verify gate panel. Fetches the paper's most-recent
+// pending gate, composes the G1 props from the paper row + payload,
+// and renders the Verify card. The card calls back to the approve
+// route and triggers a reload on success so the live SSE stream
+// reattaches to the resumed turn.
+function VerifyGatePanel({
+  paperId,
+  slug,
+  title,
+  onAllowed,
+  onDenied,
+}: {
+  paperId: string;
+  slug: string;
+  title: string;
+  onAllowed: () => void;
+  onDenied: () => void;
+}) {
+  const [gate, setGate] = useState<Record<string, unknown> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/papers/${paperId}/gates`)
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return (await r.json()) as { ok: boolean; gate: Record<string, unknown> | null };
+      })
+      .then((d) => { if (!cancelled) setGate(d.gate); })
+      .catch((e: Error) => { if (!cancelled) setError(e.message); });
+    return () => { cancelled = true; };
+  }, [paperId]);
+  if (error) return <div data-testid="gate-error" className="text-sm text-[var(--bad)]">Gate error: {error}</div>;
+  if (gate === null) return <div data-testid="gate-empty" className="text-sm text-[var(--muted)]">No pending gate.</div>;
+  // Derive G1 props from the gate payload + paper metadata. The page
+  // (not this client) owns the full provenance block, so the cockpit
+  // fills the placeholder fields from the gate payload when the page
+  // hasn't supplied them yet.
+  const payload = (gate.payload as Record<string, unknown>) ?? {};
+  const expectedOwner =
+    typeof payload.repoOwner === "string" ? payload.repoOwner : "tensorflow";
+  const provenance = {
+    arxivId: typeof payload.arxivId === "string" ? payload.arxivId : "",
+    title,
+    authors: Array.isArray(payload.authors) ? (payload.authors as string[]) : [],
+    fetchedAt: typeof payload.fetchedAt === "string" ? payload.fetchedAt : new Date().toISOString(),
+    sourceUrl: typeof payload.sourceUrl === "string" ? payload.sourceUrl : "",
+    sourceSha256: typeof payload.sourceSha256 === "string" ? payload.sourceSha256 : "",
+    repoUrl: typeof payload.repoUrl === "string" ? payload.repoUrl : `https://github.com/${expectedOwner}/${slug}`,
+    repoCommitSha: typeof payload.repoCommitSha === "string" ? payload.repoCommitSha : "0000000",
+  };
+  const intent = typeof payload.intent === "string" ? payload.intent : "Run the paper's verification command in a disposable sandbox.";
+  const budget = {
+    cpu: "2 vCPU",
+    ram: "4 GB",
+    disk: "20 GB",
+    wallClock: "30 min",
+    networkMode: "egress-allowlist only",
+    egressAllowlist: ["github.com", "pypi.org", "huggingface.co"],
+  };
+  const envelope = {
+    hypervisor: "KVM (microVM)",
+    baseImageDigest: "sha256:1d2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c",
+    seccompProfile: "default",
+    uid: "1000:1000",
+    mounts: "/workspace (tmpfs)",
+    ephemeral: "true — destroyed on exit",
+  };
+  const dataScope =
+    "Files readable: /workspace, /tmp. Cannot read ~/.ssh, ~/.aws, browser profile, or home directory.";
+  const persistence =
+    "Nothing survives this run except stdout/stderr log, the workspace tarball, and Postgres rows tagged with run_id.";
+
+  async function postDecision(decision: "allow" | "deny", reason?: string) {
+    if (!gate) return;
+    const gateId = gate.id;
+    setSubmitting(true);
+    try {
+      const r = await fetch(`/api/agent/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ gateId, decision, reason }),
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        throw new Error(d?.error ?? `HTTP ${r.status}`);
+      }
+      if (decision === "allow") onAllowed();
+      else onDenied();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <VerifyCard
+      gate={{
+        id: String(gate.id),
+        tool_name: String(gate.tool_name),
+        thread_id: String(gate.thread_id),
+        tool_call_id: String(gate.tool_call_id),
+        payload: payload as Record<string, unknown>,
+        status: String(gate.status),
+        expires_at: String(gate.expires_at),
+      }}
+      expectedOwner={expectedOwner}
+      provenance={provenance}
+      intent={intent}
+      budget={budget}
+      envelope={envelope}
+      dataScope={dataScope}
+      persistence={persistence}
+      onAllow={() => { void postDecision("allow"); }}
+      onDeny={() => {
+        const reason = typeof window !== "undefined" ? window.prompt("Reason (optional):") ?? undefined : undefined;
+        void postDecision("deny", reason);
+      }}
+      onEdit={() => { window.location.href = `/paper/${slug}/audit`; }}
+      onKillSwitch={() => { void postDecision("deny", "killed by user"); }}
+    />
+  );
+}
+

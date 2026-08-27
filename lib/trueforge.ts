@@ -42,9 +42,36 @@ export type TurnStream = {
   cancel: () => void;
 };
 
+// Phase 4.1 — the resume-turn input item.
+//
+// Per the binding spec (docs/approval-gates.md), the resume turn on
+// the same `threadId` carries a `user.tool_approval` input item and
+// MUST NOT mix with `user.message`. We model that here as a tagged
+// union so the type system enforces the rule at the call site.
+export type ResumeInputItem =
+  | {
+      type: "user.tool_approval";
+      threadId: string;
+      toolCallId: string;
+      approval: { status: "allow" } | { status: "deny"; reason: string };
+    };
+
+export type ResumeTurnInput = {
+  sessionId: string;
+  threadId: string;
+  toolCallId: string;
+  decision: "allow" | "deny";
+  reason?: string;
+};
+
+export type ResumeTurnResult = {
+  turnId: string;
+};
+
 export interface TrueForgeClient {
   startSession(input: StartSessionInput): Promise<StartSessionResult>;
   createTurnStream(sessionId: string, turnId: string): Promise<TurnStream>;
+  resumeTurnWithApproval(input: ResumeTurnInput): Promise<ResumeTurnResult>;
   cancelSession(sessionId: string): Promise<void>;
 }
 
@@ -187,6 +214,13 @@ class FakeTrueForgeClient implements TrueForgeClient {
   async cancelSession(_sessionId: string): Promise<void> {
     // no-op
   }
+  async resumeTurnWithApproval(input: ResumeTurnInput): Promise<ResumeTurnResult> {
+    // The fake does not stream a resumed turn (the cockpit has already
+    // received the gate's terminal `turn.paused` event). We return a
+    // fresh turnId so the route handler can record a meaningful audit
+    // row and the cockpit's status flips to "running" again.
+    return { turnId: `turn_resume_${Math.random().toString(36).slice(2, 8)}` };
+  }
 }
 
 // ----------------------------------------------------------------------------
@@ -233,6 +267,23 @@ class LiveTrueForgeClient implements TrueForgeClient {
   async cancelSession(sessionId: string): Promise<void> {
     const c = await this.client();
     await c.sessions.cancel(sessionId);
+  }
+  async resumeTurnWithApproval(input: ResumeTurnInput): Promise<ResumeTurnResult> {
+    const c = await this.client();
+    // The resume contract: a NEW turn on the same `threadId` whose
+    // input is a single `user.tool_approval` item. The live SDK call
+    // is intentionally narrow — never mix in `user.message`.
+    const item: ResumeInputItem = {
+      type: "user.tool_approval",
+      threadId: input.threadId,
+      toolCallId: input.toolCallId,
+      approval:
+        input.decision === "allow"
+          ? { status: "allow" }
+          : { status: "deny", reason: input.reason ?? "" },
+    };
+    const turn = await c.createTurn(input.sessionId, { input: [item] });
+    return { turnId: turn.id };
   }
 }
 
