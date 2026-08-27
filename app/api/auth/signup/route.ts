@@ -3,17 +3,30 @@
 // - 400 with neutral "invalid credentials"-style copy on bad input
 // - 200 { ok: true, user: { id, email } } and sets recap_session cookie on success
 // - Cookie is httpOnly + sameSite=lax (plan requirement, asserted in e2e)
+//
+// Bug fixes vs. round 1:
+// - 72-byte password limit enforced (Qodo bug 1)
+// - IP+email rate limit (Qodo bug 3)
+// - Check email existence BEFORE hashing, so dupes cost ~1 SELECT not bcrypt (Qodo bug 3)
+// - Always return the same neutral 400 shape so callers cannot distinguish failure modes
 
 import { NextResponse, type NextRequest } from "next/server";
 import { hashPassword, signSession, SESSION_COOKIE_NAME, SESSION_TTL_SECONDS } from "../../../../lib/auth";
 import { query } from "../../../../lib/db";
+import { isValidPassword } from "../../../../lib/passwordPolicy";
+import { checkRateLimit, clientIp } from "../../../../lib/rateLimit";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MIN_PASSWORD_LEN = 8;
 
 function bad(message = "Invalid credentials"): NextResponse {
-  // Neutral copy: never reveal which field failed (plan).
   return NextResponse.json({ ok: false, error: message }, { status: 400 });
+}
+
+function tooManyRequests(resetMs: number): NextResponse {
+  return NextResponse.json(
+    { ok: false, error: "Too many requests" },
+    { status: 429, headers: { "Retry-After": String(Math.ceil(resetMs / 1000)) } },
+  );
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -30,9 +43,24 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     ? (body as { password: string }).password
     : "";
 
-  if (!EMAIL_RE.test(email) || password.length < MIN_PASSWORD_LEN) {
+  if (!EMAIL_RE.test(email) || !isValidPassword(password)) {
     return bad();
   }
+
+  const identity = `${clientIp(req)}|${email}`;
+  const rl = await checkRateLimit("signup", identity);
+  if (!rl.allowed) return tooManyRequests(rl.resetMs);
+
+  // Check email existence first so duplicate signups don't pay the bcrypt cost.
+  let existing: { id: string } | undefined;
+  try {
+    const result = await query<{ id: string }>(`SELECT id FROM users WHERE email = $1`, [email]);
+    existing = result.rows[0];
+  } catch (err) {
+    console.error("signup: db error", err);
+    return bad();
+  }
+  if (existing) return bad();
 
   const passwordHash = await hashPassword(password);
   let row: { id: string; email: string };
@@ -44,7 +72,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       [email, passwordHash],
     );
     if (inserted.rowCount === 0) {
-      // Email already exists; don't leak that fact, return neutral.
+      // Race: another request inserted the same email between SELECT and INSERT.
       return bad();
     }
     row = inserted.rows[0];

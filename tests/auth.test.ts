@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { hashPassword, verifyPassword, signSession, verifySession } from "../lib/auth";
+import { isValidPassword, MIN_PASSWORD_LEN, MAX_PASSWORD_BYTES } from "../lib/passwordPolicy";
 
 // Phase 1.2 — auth unit tests (RED first, then GREEN with the lib/auth impl).
 // These cover the pure functions used by /api/auth/signup, /api/auth/login,
@@ -52,5 +53,23 @@ describe("JWT session tokens", () => {
   it("verifySession rejects garbage", async () => {
     expect(await verifySession("not-a-jwt")).toBeNull();
     expect(await verifySession("")).toBeNull();
+  });
+});
+
+describe("password policy", () => {
+  it("accepts a normal password", () => {
+    expect(isValidPassword("correct-horse-battery-staple")).toBe(true);
+  });
+
+  it("rejects too-short passwords (Qodo: min length)", () => {
+    expect(isValidPassword("a".repeat(MIN_PASSWORD_LEN - 1))).toBe(false);
+  });
+
+  it("rejects passwords over 72 UTF-8 bytes (Qodo bug 1: bcrypt cap)", () => {
+    expect(isValidPassword("a".repeat(MAX_PASSWORD_BYTES + 1))).toBe(false);
+  });
+
+  it("accepts a password that is exactly 72 UTF-8 bytes", () => {
+    expect(isValidPassword("a".repeat(72))).toBe(true);
   });
 });

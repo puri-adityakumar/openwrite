@@ -85,3 +85,16 @@ test("POST /api/auth/signup rejects passwords shorter than 8 chars with neutral 
   const body = await res.text();
   expect(body.toLowerCase()).toContain("invalid");
 });
+
+// --- Password rules: > 72 UTF-8 bytes rejected (Qodo bug 1) --------------
+test("POST /api/auth/signup rejects passwords over 72 UTF-8 bytes (bcrypt cap)", async () => {
+  const api = await request.newContext({ baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:13000" });
+  // 80 ASCII chars = 80 UTF-8 bytes, well past the 72-byte cap.
+  const longPassword = "a".repeat(80);
+  const res = await api.post("/api/auth/signup", {
+    data: { email: `long-${Date.now()}@example.com`, password: longPassword },
+  });
+  expect(res.status()).toBe(400);
+  const body = await res.text();
+  expect(body.toLowerCase()).toContain("invalid");
+});
