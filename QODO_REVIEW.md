@@ -7,9 +7,10 @@ by the Qodo GitHub App before merge. Direct pushes to `main` are not used.
 ## Qodo App install (one-time, per team)
 
 The Qodo GitHub App is installed at the team level (not per-repo). Verified
-install URL (slug `qodo-merge`, HTTP 302 → install flow, probed 2026-08-26):
+install URL (slug `qodo-code-review`, owner `qodo-ai`, app ID 484649,
+probed 2026-08-26 via the live API after install):
 
-**https://github.com/apps/qodo-merge/installations/new**
+**https://github.com/apps/qodo-code-review/installations/new**
 
 Alternative path via the Qodo portal:
 
@@ -18,17 +19,28 @@ Alternative path via the Qodo portal:
 3. Authorize the GitHub org or user that owns this repo.
 4. One installation per team is enough; it covers every repo in scope.
 
-If Qodo is not active on a given PR, comment `/agentic_review` on the PR and
-Qodo will run a review pass on demand. This is the documented fallback for
-PR-Agent (see https://docs.pr-agent.ai).
+### How to trigger the first review on an already-open PR
+
+Qodo's automatic review triggers are **PR opened, reopened, or marked
+ready for review** — **not** App installation (Qodo's docs:
+https://docs.qodo.ai/code-review/use-qodo-in-prs). If a PR is already open
+when the App is installed, do one of:
+
+- Comment **`/agentic_review`** on the PR (the documented PR-Agent fallback;
+  see https://docs.pr-agent.ai). This is what triggered the first review
+  on PR #1 in this repo.
+- Or close the PR and reopen it, which fires the `reopened` trigger.
+- Or mark it ready for review if it was previously a draft.
 
 ## Status as of Phase 0
 
-- **App installed on `puri-adityakumar/openwrite`:** _pending — requires a
-  one-time human action in the browser via the install URL above_.
-- **First Qodo-reviewed PR:** will be linked in this file and in
-  `README.md` → `## Qodo Code Review Evidence` once the App is installed
-  and the first Phase 1+ PR is reviewed and merged.
+- **App installed on `puri-adityakumar/openwrite`:** _MITIGATED — App live
+  since 2026-08-27, review on PR #1 triggered via `/agentic_review`_.
+- **First PR (reviewed, awaiting merge):**
+  [#1 — chore(deps): install tsx](https://github.com/puri-adityakumar/openwrite/pull/1)
+  on branch `chore/install-tsx`. Qodo posted a `COMMENTED` review with
+  one bug finding about the install-trigger wording in this file; the fix
+  is on the same branch in a follow-up commit.
 - **Phase 0 bootstrap commits** were pushed directly to `main` to establish
   the repo. Per `docs/plan/phase-0-decisions-and-scaffold.md` sub-phase 0.2
   verification line, the install steps being executed and noted satisfies

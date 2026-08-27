@@ -87,4 +87,18 @@ describe("Phase 0 scaffold", () => {
     expect(cfg).toMatch(/width:\s*1024/);
     expect(cfg).toMatch(/height:\s*768/);
   });
+
+  it("parity and demo scripts resolve to a real binary (tsx installed)", () => {
+    // Phase 0 left parity/demo scripts that point at `tsx scripts/*.ts`.
+    // Without tsx as a devDependency those scripts would fail with
+    // "command not found". This guard keeps the scripts runnable.
+    const pkg = JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8")) as {
+      devDependencies?: Record<string, string>;
+    };
+    expect(pkg.devDependencies?.tsx, "tsx must be a devDependency for parity/demo scripts").toBeDefined();
+    const parity = readFileSync(resolve(ROOT, "package.json"), "utf8").match(/"parity":\s*"([^"]+)"/);
+    const demo = readFileSync(resolve(ROOT, "package.json"), "utf8").match(/"demo":\s*"([^"]+)"/);
+    expect(parity?.[1]).toMatch(/tsx/);
+    expect(demo?.[1]).toMatch(/tsx/);
+  });
 });
