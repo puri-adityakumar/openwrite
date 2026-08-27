@@ -41,10 +41,12 @@ test("ask: composer accepts a question and renders an answer or a clean error", 
   await page.goto("/paper/attention-is-all-you-need");
   await page.getByTestId("ask-input").fill("What is the Transformer?");
   await page.getByTestId("ask-submit").click();
-  // Either we get an answer (GMI configured) or a clean error.
+  // Either we get an answer (GMI configured) or a clean error. The
+  // first ask in a fresh dev-server build needs Next to compile the
+  // route + render the PDF, so we allow a longer window on iPad.
   await expect(async () => {
     const hasAnswer = await page.getByTestId("ask-answer").isVisible().catch(() => false);
     const hasError = await page.getByTestId("ask-error").isVisible().catch(() => false);
     if (!hasAnswer && !hasError) throw new Error("no answer or error after submit");
-  }).toPass({ timeout: 15_000 });
+  }).toPass({ timeout: 25_000 });
 });
