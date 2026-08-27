@@ -24,6 +24,30 @@ npm install
 docker compose up          # the only setup command beyond install
 ```
 
+`docker compose up` brings up Postgres, Redis, and the `recap-db-init`
+sidecar that applies `schema.sql` + `seed.sql`. The cockpit first paint
+renders from `seed_audits` against this stack — no external services,
+no sibling checkouts, no other setup steps. This satisfies the project's
+[standing 100%-local constraint](docs/README.md).
+
+### Opt-in: bring up the TrueForge server too
+
+The TrueForge `server` service is gated behind the `trueforge` Compose
+profile. A default `docker compose up` does **not** build or start it,
+because the build context (`${TF_SOURCE_DIR:-../trueforge}`) lives
+outside this repository and is not part of the demo path. To exercise
+the live audit path, clone TrueForge as a sibling repo and bring the
+server up explicitly:
+
+```bash
+git clone https://github.com/truefoundry/trueforge.git ../trueforge
+docker compose --profile trueforge up
+```
+
+See [docker-compose.trueforge.yml](docker-compose.trueforge.yml) for the
+port mapping (server on host 8791 → container 8790, Postgres on 5433,
+Redis on 6380).
+
 After `npm install`, the only setup command is `docker compose up` (see the
 100% local standing constraint in [docs/README.md](docs/README.md)). When
 the containers are up, open http://localhost:13000.

@@ -1,0 +1,53 @@
+# Recap top-level compose.
+#
+# - Vendors the official TrueForge stack (docker-compose.trueforge.yml).
+# - Adds the `recap-db-init` sidecar that creates the `recap` database in the
+#   same Postgres container and applies schema.sql + seed.sql (idempotent).
+# - All non-clashing host ports are declared in the vendored TrueForge file:
+#   Postgres 5433, Redis 6380, TrueForge server 8791.
+# - Recap's Next.js app runs on host 13000 (see package.json `dev` script).
+#
+# `docker compose up` brings up: postgres + redis + trueforge server + recap-db-init.
+
+name: recap
+
+include:
+  - path: ./docker-compose.trueforge.yml
+    name: trueforge
+
+services:
+  # recap-db-init: one-shot init sidecar. Waits for Postgres to be healthy,
+  # creates the `recap` database (alongside `trueforge` and `postgres`),
+  # then applies schema.sql and seed.sql. Idempotent: schema uses
+  # `CREATE TABLE IF NOT EXISTS` and seed uses `ON CONFLICT DO NOTHING`.
+  recap-db-init:
+    image: postgres:17-alpine
+    depends_on:
+      - postgres
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-trueforge}
+    volumes:
+      - ./schema.sql:/sql/schema.sql:ro
+      - ./seed.sql:/sql/seed.sql:ro
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -eu
+        export PGPASSWORD=$${POSTGRES_PASSWORD:-trueforge}
+        # Wait for Postgres to accept connections.
+        until pg_isready -h postgres -p 5432 -U "$${POSTGRES_USER:-trueforge}"; do
+          echo "recap-db-init: waiting for postgres..."; sleep 1;
+        done
+        # Create the recap DB if it doesn't exist.
+        psql -h postgres -U "$${POSTGRES_USER:-trueforge}" -d postgres -tc \
+          "SELECT 1 FROM pg_database WHERE datname='recap'" | grep -q 1 \
+          || psql -h postgres -U "$${POSTGRES_USER:-trueforge}" -d postgres \
+               -c "CREATE DATABASE recap"
+        # Apply schema then seed (both idempotent).
+        psql -h postgres -U "$${POSTGRES_USER:-trueforge}" -d recap \
+             -v ON_ERROR_STOP=1 -f /sql/schema.sql
+        psql -h postgres -U "$${POSTGRES_USER:-trueforge}" -d recap \
+             -v ON_ERROR_STOP=1 -f /sql/seed.sql
+        echo "recap-db-init: schema + seed applied to recap DB"
+    restart: "no"

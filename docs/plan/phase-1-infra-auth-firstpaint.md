@@ -28,13 +28,19 @@ first 58 seconds.
 
 ## Sub-phase 1.1 — Docker & databases (owner: infra-engineer)
 
-**Objective:** one `docker compose up` brings up TrueForge (:18790), Postgres
-(both DBs), Redis, and applies the app schema + seed.
+**Objective:** one `docker compose up` brings up Postgres (with the `recap`
+DB created and seeded), Redis, and the `recap-db-init` sidecar. The TrueForge
+`server` service is vendored but **opt-in** (gated behind the `trueforge`
+Compose profile) so the default `docker compose up` does not require an
+external TrueForge source checkout. This honours the standing 100%-local
+constraint that `docker compose up` is the only setup command beyond
+`npm install`.
 
 **Instructions:**
 1. Vendor the official TrueForge `docker-compose.yml`; add
    `docker-compose.override.yml` remapping TrueForge to **18790** and ensuring
-   no port clashes.
+   no port clashes. The `server` service carries `profiles: ["trueforge"]` so
+   it stays dormant in the default path.
 2. `schema.sql` — the exact five tables + indexes from
    [../architecture.md](../architecture.md#database-schema-schemasql--single-source-applied-by-recap-db-init).
 3. `seed.sql` — one user (`demo@local` / bcrypt of `demo1234`), one seeded
@@ -46,7 +52,8 @@ first 58 seconds.
    alongside `trueforge`, applies schema then seed, idempotent.
 5. `scripts/parity.ts` + `npm run parity`: asserts the `seed_audits` event
    shape matches the live `audit` event shape (same required keys per event
-   type) — the drift guard.
+   type) — the drift guard. With `DATABASE_URL` set, parity also connects to
+   the live DB and fails on real drift.
 
 **Files:** `docker-compose.override.yml`, `schema.sql`, `seed.sql`,
 `scripts/parity.ts`, `fixtures/papers/attention.pdf` (+ metadata JSON).
@@ -56,7 +63,8 @@ first 58 seconds.
   `tests/seed.test.ts` (seed user exists, seeded paper uses fixture path) fail first
 - [ ] GREEN: compose stack boots; schema + seed applied idempotently
 - [ ] `npm run parity` passes against the seeded DB
-- [ ] TrueForge reachable on 18790, never on 8790
+- [ ] `docker compose --profile trueforge config` resolves the server build
+      context (verifies TF_SOURCE_DIR wiring without forcing a build)
 
 **Verification**
 - [ ] `docker compose up -d && docker compose ps` shows all services healthy
