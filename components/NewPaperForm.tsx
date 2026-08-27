@@ -1,9 +1,10 @@
 "use client";
 
-// Phase 1.3 — /paper/new client form. Owns the source-input + 3-mode
+// Phase 2.1 — /paper/new client form. Owns the source-input + 3-mode
 // dial state. Review is the default mode (plan: "the verb the demo
-// beats use"). Submit posts to /api/agent/start; until Phase 2 lands
-// the route returns 501 and the form surfaces the message.
+// beats use"). Submit creates a paper row via /api/papers, then asks
+// /api/agent/start to allocate a TrueForge session + first turn; the
+// form then routes to /paper/[slug] which opens the live SSE stream.
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -26,23 +27,44 @@ export function NewPaperForm() {
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
+    if (!source.trim()) {
+      setError("Enter a PDF path or arXiv URL.");
+      return;
+    }
     startTransition(async () => {
-      const res = await fetch("/api/agent/start", {
+      // 1) Create the paper row.
+      const createRes = await fetch("/api/papers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ source, mode }),
       });
-      if (res.status === 501) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(body.error ?? "Agent wiring lands in Phase 2.");
+      if (!createRes.ok) {
+        const body = (await createRes.json().catch(() => ({}))) as { error?: string };
+        setError(body.error ?? "Could not create paper.");
         return;
       }
-      if (!res.ok) {
-        setError("Could not start agent.");
+      const created = (await createRes.json()) as { paperId?: string; slug?: string };
+      if (!created.paperId || !created.slug) {
+        setError("Paper create returned no id.");
         return;
       }
-      const body = (await res.json()) as { slug?: string };
-      if (body.slug) router.push(`/paper/${body.slug}`);
+      // 2) Start the agent run.
+      const startRes = await fetch("/api/agent/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paperId: created.paperId,
+          mode,
+          source,
+        }),
+      });
+      if (!startRes.ok) {
+        const body = (await startRes.json().catch(() => ({}))) as { error?: string };
+        setError(body.error ?? "Could not start agent.");
+        return;
+      }
+      const started = (await startRes.json()) as { slug?: string };
+      if (started.slug) router.push(`/paper/${started.slug}`);
     });
   }
 

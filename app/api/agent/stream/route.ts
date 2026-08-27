@@ -1,0 +1,277 @@
+// Phase 2.1 — SSE route handler for the live TrueForge turn stream.
+//
+// P7 binding constraints honored in this file (see docs/architecture.md):
+//
+//   P7#1 — first HTTP response MUST reflect the first iterator result.
+//          A failing first pull returns 500 immediately; we never return
+//          a 200 with an empty/error-only body. Implemented with a
+//          "first event" peek before the Response is constructed.
+//
+//   P7#2 — runtime: "nodejs" + dynamic: "force-dynamic" + NO `await`
+//          between enqueues. We use a ReadableStream + a single async
+//          loop that pulls events and writes them synchronously to the
+//          controller; the only awaits in the hot path are at the
+//          iterator boundary and the audit DB write (off the enqueue
+//          critical path).
+//
+//   P7#3 — turn.done with requiredActions.length > 0 must surface as
+//          `event: turn.paused` (not `event: turn.done`) so the client
+//          store flips to "paused" without a follow-up.
+//
+//   P7#4 — the 15s heartbeat is a comment line so the EventSource
+//          auto-reconnects cleanly if the connection drops.
+//
+//   P7#5 — threadId→role is resolved server-side via ThreadMap so the
+//          reducer never inspects event text for roles. The resolved
+//          roles are mirrored into the SSE frames (see #7) so the
+//          client store can apply them too.
+//
+// The route also persists every event to the `audit` table (Phase 2.1#5).
+
+import type { NextRequest } from "next/server";
+import { appendAudit, AuditWriteError } from "../../../../lib/audit";
+import { reduce, initialState, type LiveEvent, type LiveState } from "../../../../lib/event-reducer";
+import { ThreadMap } from "../../../../lib/thread-map";
+import { getTrueForgeClient } from "../../../../lib/trueforge";
+import { query } from "../../../../lib/db";
+import { requireUser } from "../../../../lib/session";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const HEARTBEAT_MS = 15_000;
+
+function sseLine(event: string, data: unknown): string {
+  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+
+function sseComment(text: string): string {
+  return `: ${text}\n\n`;
+}
+
+function classifyTerminal(state: LiveState): "turn.done" | "turn.paused" | "turn.error" | null {
+  if (!state.terminal) return null;
+  if (state.terminal.kind === "done") return "turn.done";
+  if (state.terminal.kind === "paused") return "turn.paused";
+  return "turn.error";
+}
+
+function errResponse(status: number, message: string): Response {
+  return new Response(JSON.stringify({ ok: false, error: message }), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+export async function POST(req: NextRequest): Promise<Response> {
+  return handle(req);
+}
+
+export async function GET(req: NextRequest): Promise<Response> {
+  // EventSource is GET-only; the same handler backs both POST and GET.
+  return handle(req);
+}
+
+async function handle(req: NextRequest): Promise<Response> {
+  // P7#1 — read params, then authenticate + authorize the caller.
+  // The stream route MUST verify that the paper belongs to the current
+  // user and that the supplied sessionId/turnId match the paper row —
+  // otherwise any caller with valid identifiers could consume another
+  // user's run. (Qodo #4)
+  const url = new URL(req.url);
+  const sessionId = url.searchParams.get("sessionId");
+  const turnId = url.searchParams.get("turnId");
+  const paperId = url.searchParams.get("paperId");
+  if (!sessionId || !turnId || !paperId) {
+    return errResponse(400, "missing sessionId/turnId/paperId");
+  }
+
+  let user;
+  try {
+    user = await requireUser();
+  } catch {
+    return errResponse(401, "authentication required");
+  }
+
+  // Ownership + session/turn match.
+  const owner = await query<{ session_id: string | null; turn_id: string | null }>(
+    `SELECT session_id, turn_id FROM papers WHERE id = $1 AND user_id = $2 LIMIT 1`,
+    [paperId, user.sub],
+  );
+  if (owner.rows.length === 0) return errResponse(404, "paper not found");
+  if (owner.rows[0]!.session_id !== sessionId || owner.rows[0]!.turn_id !== turnId) {
+    return errResponse(403, "session/turn does not match paper");
+  }
+
+  return buildStream({ sessionId, turnId, paperId });
+}
+
+// Pure stream builder — separated from the auth wrapper so unit tests
+// can exercise the P7 pipeline without standing up a session cookie.
+export async function buildStream(input: {
+  sessionId: string;
+  turnId: string;
+  paperId: string;
+}): Promise<Response> {
+  const { sessionId, turnId, paperId } = input;
+  const client = getTrueForgeClient();
+  let turn;
+  try {
+    turn = await client.createTurnStream(sessionId, turnId);
+  } catch (e) {
+    return errResponse(500, `createTurnStream failed: ${(e as Error).message}`);
+  }
+
+  // P7#1 — first `iterator.next()` is awaited BEFORE the Response is
+  // constructed. If it throws, we return 500. If the iterator is empty
+  // on the first pull (done: true), we return 204 — there is nothing to
+  // stream. (Qodo #1)
+  let firstResult: IteratorResult<LiveEvent>;
+  try {
+    firstResult = await turn.iterator.next();
+  } catch (e) {
+    return errResponse(500, `first event read failed: ${(e as Error).message}`);
+  }
+  if (firstResult.done) {
+    try { turn.cancel(); } catch { /* ignore */ }
+    return new Response(null, { status: 204 });
+  }
+
+  // P7#2 — ReadableStream + single async loop; only awaits are at the
+  // iterator boundary and audit DB. The first event is yielded by
+  // prepending it to the loop.
+  const encoder = new TextEncoder();
+  let closed = false;
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let state = initialState();
+      const threadMap = new ThreadMap();
+
+      const safeEnqueue = (chunk: string) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(chunk));
+        } catch {
+          closed = true;
+        }
+      };
+
+      let preambleSent = false;
+      const sendPreamble = () => {
+        if (preambleSent || closed) return;
+        preambleSent = true;
+        safeEnqueue(`retry: 5000\n\n`);
+      };
+
+      const startHeartbeat = () => {
+        if (heartbeat || closed) return;
+        heartbeat = setInterval(() => {
+          if (closed) return;
+          safeEnqueue(sseComment("hb"));
+        }, HEARTBEAT_MS);
+      };
+
+      const cleanup = () => {
+        if (closed) {
+          if (heartbeat) { clearInterval(heartbeat); heartbeat = null; }
+          return;
+        }
+        closed = true;
+        if (heartbeat) { clearInterval(heartbeat); heartbeat = null; }
+        try { turn.cancel(); } catch { /* ignore */ }
+        try { controller.close(); } catch { /* already closed */ }
+      };
+
+      const processEvent = async (event: LiveEvent) => {
+        if (event.type === "thread.created") {
+          threadMap.register(String(event.payload.threadId ?? ""), {
+            title: event.payload.title as string | undefined,
+            agentInfo: event.payload.agentInfo as { name?: string } | undefined,
+            parentThreadId: (event.payload.parent as { threadId?: string } | undefined)?.threadId ?? null,
+          });
+        }
+        const roles = threadMap.snapshot();
+        const next = reduce(state, event, { roles });
+        state = next;
+        const eventWithRoles: LiveEvent & { _roles?: Record<string, string> } = {
+          ...event,
+          _roles: Object.fromEntries(roles),
+        };
+        try {
+          await appendAudit(paperId, event);
+        } catch (e) {
+          if (e instanceof AuditWriteError) {
+            safeEnqueue(sseLine("turn.error", {
+              message: "audit write failed",
+              detail: e.message,
+            }));
+            return { terminal: true, next };
+          }
+          throw e;
+        }
+        sendPreamble();
+        startHeartbeat();
+        safeEnqueue(sseLine("event", eventWithRoles));
+        const terminal = classifyTerminal(state);
+        if (terminal) {
+          safeEnqueue(sseLine(terminal, { state: state.status, metrics: state.metrics }));
+          try {
+            await query(
+              `UPDATE papers SET status = $1, updated_at = now() WHERE id = $2`,
+              [state.status, paperId],
+            );
+          } catch { /* best-effort; the live stream already closed */ }
+          return { terminal: true, next };
+        }
+        return { terminal: false, next };
+      };
+
+      try {
+        if (closed) return;
+        const r1 = await processEvent(firstResult.value);
+        if (r1.terminal) { cleanup(); return; }
+        for await (const event of wrapWithSeq(turn.iterator)) {
+          if (closed) break;
+          const r = await processEvent(event);
+          if (r.terminal) { cleanup(); return; }
+        }
+      } catch (e) {
+        if (!closed) {
+          safeEnqueue(sseLine("turn.error", { message: (e as Error).message }));
+        }
+      } finally {
+        cleanup();
+      }
+    },
+    cancel() {
+      closed = true;
+      if (heartbeat) { clearInterval(heartbeat); heartbeat = null; }
+      try { turn.cancel(); } catch { /* ignore */ }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      "x-accel-buffering": "no",
+    },
+  });
+}
+
+// Assigns a monotonic sequence number to each event from the iterator when
+// the upstream doesn't supply one (the fake adapter supplies its own).
+// Real TrueForge events always carry a ULID-derived seq, so this is a
+// safety net for tests + any future adapters.
+async function* wrapWithSeq(iter: AsyncIterableIterator<LiveEvent>): AsyncIterableIterator<LiveEvent> {
+  let n = 0;
+  for await (const e of iter) {
+    n += 1;
+    if (typeof e.seq === "number" && e.seq > 0) {
+      yield e;
+    } else {
+      yield { ...e, seq: n };
+    }
+  }
+}

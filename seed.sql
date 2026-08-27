@@ -44,8 +44,8 @@ SELECT
     'fixtures/papers/attention.pdf',
     'review',
     'done',
-    'seed-session-0001',
-    'seed-turn-0001'
+    NULL,
+    NULL
 WHERE NOT EXISTS (
     SELECT 1 FROM papers WHERE slug = 'attention-is-all-you-need'
 );

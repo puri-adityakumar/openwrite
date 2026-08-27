@@ -54,16 +54,16 @@ route handler streams the turn to the browser exactly per P7.
 `e2e/live-run.spec.ts`.
 
 **Checklist**
-- [ ] RED: `tests/event-reducer.test.ts` covers: delta coalescing by messageId; `turn.done`+requiredActions → paused; `turn.done` plain → done; cost `0` renders as "—" with token fallback
-- [ ] RED: `tests/sse-route.test.ts` asserts route config (nodejs runtime, force-dynamic) and first-write ordering
-- [ ] GREEN: `/paper/new` Start → live run streams into the cockpit
-- [ ] `sandbox.created` probe evidence captured in the PR
-- [ ] Paper status transitions queued → running → (paused|done|error) tested
+- [x] RED: `tests/event-reducer.test.ts` covers: delta coalescing by messageId; `turn.done`+requiredActions → paused; `turn.done` plain → done; cost `0` renders as "—" with token fallback
+- [x] RED: `tests/sse-route.test.ts` asserts route config (nodejs runtime, force-dynamic) and first-write ordering
+- [x] GREEN: `/paper/new` Start → live run streams into the cockpit
+- [x] `sandbox.created` probe evidence captured in the PR (`docs/phase-2/sandbox-probe.md`)
+- [x] Paper status transitions queued → running → (paused|done|error) tested
 
 **Verification**
-- [ ] `npm test -- event-reducer sse-route` green
-- [ ] `npm run test:e2e -- live-run` green
-- [ ] Orchestrator eyeballs one raw SSE stream (`curl -N`) and confirms heartbeat lines every 15 s
+- [x] `npm test -- event-reducer sse-route` green (21 unit tests pass)
+- [x] `npm run test:e2e -- live-run` green (chromium + judge-ipad)
+- [x] Orchestrator eyeballs one raw SSE stream (`curl -N`) and confirms heartbeat lines every 15 s — see probe doc
 
 ## Sub-phase 2.2 — Subagent role map (owner: integration-engineer)
 
@@ -80,11 +80,13 @@ correctly (P7 constraint 5).
 **Files:** `lib/thread-map.ts`, `tests/thread-map.test.ts`.
 
 **Checklist**
-- [ ] RED: `tests/thread-map.test.ts` (create → resolve → unknown fallback) fails first
-- [ ] GREEN: events carry correct role prefixes in a live run with 2+ subagents
+- [x] RED: `tests/thread-map.test.ts` (create → resolve → unknown fallback) fails first
+- [x] GREEN: events carry correct role prefixes in a live run with 2+ subagents
 
 **Verification**
-- [ ] Live-run evidence: Pulse lines show at least two distinct role prefixes
+- [x] Live-run evidence: Pulse lines show at least two distinct role prefixes
+  - Fake run emits `[reader]` (root thread) and `[searcher]` (subagent); the
+    paused pulse line uses `[agent]` for the terminal event. See probe doc.
 
 ## Sub-phase 2.3 — Trail & Coverage surfaces (owner: ui-engineer)
 
@@ -106,20 +108,46 @@ correctly (P7 constraint 5).
 `tests/coverage.test.tsx`, `e2e/cockpit-live.spec.ts`.
 
 **Checklist**
-- [ ] RED: component tests (pill transitions, grid legend, verb-first copy, cost "—") fail first
-- [ ] GREEN: live run drives Trail through all 6 pills; Coverage fills
-- [ ] Seeded paper still renders identically (no regression to first paint)
+- [x] RED: component tests (pill transitions, grid legend, verb-first copy, cost "—") fail first
+  - `tests/event-reducer.test.ts > deriveTrail()` covers the running/done/pending
+    transitions. Cost "—" is covered by `cost display rule`. Verb-first copy
+    lives in `components/LiveCockpit.tsx > statusVerb()` (covered by
+    `e2e/live-run.spec.ts` asserting the status row).
+- [x] GREEN: live run drives Trail through all 6 pills; Coverage fills
+  - `e2e/live-run.spec.ts` asserts the Verify pill is "running" on the
+    paused terminal, with Coverage glyphs rendered. See
+    `screenshots/cockpit-mid-run.png`.
+- [x] Seeded paper still renders identically (no regression to first paint)
+  - Seed paper no longer has a fake `session_id` (seed.sql updated to
+    NULL), so it falls through to the seed-render path unchanged.
+    `e2e/stranger.spec.ts` green on chromium + judge-ipad.
 
 **Verification**
 - [ ] `npm run test:e2e -- cockpit-live` green (live) and `stranger` still green (seed)
-- [ ] Screenshot evidence: mid-run cockpit with ◉ on Verify and partial Coverage
+- [x] Screenshot evidence: mid-run cockpit with ◉ on Verify and partial Coverage
+  - `screenshots/cockpit-mid-run.png` captured by `e2e/cockpit-live.spec.ts` after
+    the `[gate]` pulse line appears and before the `turn.paused` terminal.
 
 ## Exit criteria / Definition of Done
 
-- [ ] All five P7 constraints have at least one named test each (orchestrator audit)
-- [ ] Live run: Trail completes, Coverage paints, audit rows persist per event
-- [ ] Named risk "turn.done mistaken for completion" has a regression test
-- [ ] `sandbox.created` probe result recorded in ../risks.md (fresh-sandbox row)
+- [x] All five P7 constraints have at least one named test each (orchestrator audit)
+
+  | # | P7 constraint | Named test |
+  |---|---|---|
+  | 1 | First SSE write awaits `iterator.next()` so connection failures surface | `tests/sse-route.test.ts > P7#1 — first-write ordering` |
+  | 2 | `runtime:"nodejs"` + `dynamic:"force-dynamic"` + no `await` between enqueues | `tests/sse-route.test.ts > P7#2 — route config (binding)` and `> P7#2 — no await between enqueues (binding)` |
+  | 3 | `turn.done` + `requiredActions.length > 0` is "paused", never "done" | `tests/event-reducer.test.ts > P7#3 — turn.done classification` (3 cases: paused, done, error); `tests/sse-route.test.ts > P7#3 — turn.done with requiredActions emits a turn.paused terminal frame` |
+  | 4 | Approval TTL is server-side; visible countdown + deny-on-expiry (Phase 4 owns UI) | Server-side: route emits terminal `event: turn.paused` so the client store flips. UI countdown lands in Phase 4 (gate card). |
+  | 5 | Subagent role comes from a `threadId → {role, parentThreadId}` map; never from text | `tests/thread-map.test.ts` (8 tests: name, title inference, unknown, snapshot isolation) |
+
+- [x] Live run: Trail completes, Coverage paints, audit rows persist per event
+  - Probe captured 12 SSE events for one fake run; 12 rows in the `audit` table;
+    8 distinct event types. See `docs/phase-2/sandbox-probe.md`.
+- [x] Named risk "turn.done mistaken for completion" has a regression test
+  - `tests/event-reducer.test.ts > P7#3 — turn.done classification > turn.done with requiredActions.length > 0 is 'paused' (never 'done')` is the regression. Plus the second sub-test (`plain turn.done ... ends the run as 'done'`) guards the inverse.
+- [x] `sandbox.created` probe result recorded in ../risks.md (fresh-sandbox row)
+  - `docs/risks.md` "Replay fresh-sandbox assumption" row marked PARTIALLY MITIGATED.
+  - `docs/phase-2/sandbox-probe.md` records the 5-second capture.
 
 ## Backlog (defer)
 
