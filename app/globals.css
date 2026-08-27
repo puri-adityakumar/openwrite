@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0b0d12;
+  --panel: #11151c;
+  --panel-2: #161c25;
+  --text: #e6e8ee;
+  --muted: #8b94a5;
+  --accent: #6ea8ff;
+  --good: #3ecf8e;
+  --warn: #f7b955;
+  --bad: #ef5b6b;
+  --border: #232a36;
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  margin: 0;
+  min-height: 100vh;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }

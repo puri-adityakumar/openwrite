@@ -1,18 +1,28 @@
-// Phase 1.2 — minimal Next.js root layout. The full landing-page UI lands
-// in Phase 1.3. This layout just gives the dev server a render target so
-// /api/auth/* routes type-check and Playwright can hit a real server.
+// Phase 1.3 — root layout: imports Tailwind globals, renders the top
+// header (Recap brand + power-user footer "Powered by ..."), and wraps
+// every page. The full marketing footer lands later; this layout only
+// contains the chrome the stranger test asserts.
 
 import type { ReactNode } from "react";
+import "./globals.css";
 
 export const metadata = {
   title: "Recap",
-  description: "Research-paper autopsy on TrueForge",
+  description: "Drop a paper. Watch an agent dissect it for you.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <header className="border-b border-[var(--border)] px-6 py-3 flex items-center justify-between">
+          <a href="/" className="font-semibold tracking-tight">Recap</a>
+          <span className="text-xs text-[var(--muted)]">
+            Powered by TrueForge · Daytona · GMI · Qodo
+          </span>
+        </header>
+        <main>{children}</main>
+      </body>
     </html>
   );
 }

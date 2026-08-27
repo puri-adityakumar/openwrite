@@ -1,14 +1,16 @@
-// Phase 1.2 — minimal landing. The full design lands in Phase 1.3.
-// This page exists so `next dev` has a renderable root and the E2E guard
-// redirect (unauthenticated /dashboard -> /) has a real / to land on.
+// Phase 1.3 — landing (auth-split). The mockup puts the Dr. K anchor
+// on the left and the sign-in card on the right; demo creds are visible
+// under the card (decision D2). Sign-in posts to /api/auth/login and
+// redirects to /dashboard on success.
+
+import { redirect } from "next/navigation";
+import { getCurrentUser } from "../lib/session";
+import { Landing } from "../components/Landing";
 
 export const dynamic = "force-dynamic";
 
-export default function HomePage() {
-  return (
-    <main>
-      <h1>Recap</h1>
-      <p>Phase 1.2 minimal shell. Full landing lands in Phase 1.3.</p>
-    </main>
-  );
+export default async function HomePage() {
+  const user = await getCurrentUser();
+  if (user) redirect("/dashboard");
+  return <Landing />;
 }

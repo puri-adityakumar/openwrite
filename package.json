@@ -31,12 +31,14 @@
   "homepage": "https://github.com/puri-adityakumar/openwrite#readme",
   "devDependencies": {
     "@playwright/test": "^1.62.1",
+    "@tailwindcss/postcss": "^4.3.3",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^26.4.0",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
+    "tailwindcss": "^4.3.3",
     "tsx": "^4.23.12",
     "typescript": "5.8.2",
     "vitest": "^4.1.11"

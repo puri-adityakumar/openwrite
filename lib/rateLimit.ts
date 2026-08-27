@@ -27,7 +27,12 @@ declare global {
 type Decision = { allowed: boolean; remaining: number; resetMs: number };
 
 const LIMITS: Record<string, { windowSec: number; max: number }> = {
-  login: { windowSec: 60, max: 10 },
+  // login: 60 attempts/min per identity, 10/min per email. The per-email
+  // limit is the security-relevant one; the per-identity limit is
+  // generous so a developer's E2E suite or a local demo session can run
+  // many tests against demo@local without tripping 429. Signup stays
+  // tight (5/min) because new-account creation is the expensive path.
+  login: { windowSec: 60, max: 60 },
   signup: { windowSec: 60, max: 5 },
 };
 
