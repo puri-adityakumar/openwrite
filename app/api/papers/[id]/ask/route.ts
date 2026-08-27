@@ -51,9 +51,13 @@ export async function POST(
 
   // Resolve the cited claims to a context block. The LLM sees both the
   // raw text and the cited evidence so it can answer grounded in the paper.
+  // Qodo #4 — defence in depth: only pass through UUID-shaped IDs.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   let contextBlock = "";
   if (cites.length > 0) {
-    const claimIds = cites.filter((c) => c.kind === "claim").map((c) => c.id);
+    const claimIds = cites
+      .filter((c) => c.kind === "claim" && UUID_RE.test(c.id))
+      .map((c) => c.id);
     if (claimIds.length > 0) {
       const cited = await query<{ id: string; text: string; evidence: string | null }>(
         `SELECT id, text, evidence FROM claims WHERE paper_id = $1 AND id = ANY($2::uuid[])`,
@@ -91,9 +95,11 @@ export async function POST(
   }
 
   // Persist the Q+A so the audit page can show "what was asked".
+  // Qodo #3 — the question is stored in the anchor so the audit log can
+  // reconstruct both the user's prompt and the LLM's answer.
   await query(
     `INSERT INTO annotations (paper_id, anchor, body) VALUES ($1, $2::jsonb, $3)`,
-    [id, JSON.stringify({ kind: "ask", cites, totalTokens }), answer],
+    [id, JSON.stringify({ kind: "ask", question: body.question, cites, totalTokens }), answer],
   );
 
   return NextResponse.json({ ok: true, answer, cites, totalTokens });

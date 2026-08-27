@@ -187,15 +187,24 @@ export function CockpitClient({
 
       <Ask
         paperId={paperId}
-        onCite={(claimId) => {
-          // We don't have the Claim object on hand here; the Reader can
-          // be opened from a Claims row click instead. The Ask answer
-          // citations are still useful as a hint that the answer is
-          // grounded — they scroll to the Reader when present.
+        onCite={async (claimId) => {
+          // Qodo #2: clicking a citation in the answer must open the
+          // Reader at the cited claim, completing the answer-to-Reader
+          // loop. We fetch the claim (the CockpitClient owns the
+          // reader state; Ask just emits the click).
           if (openClaim?.id === claimId) return;
-          // Lazy: don't fetch the claim here; the user can open the
-          // Claims tab and click the row. Future: surface a list of
-          // suggested opens.
+          try {
+            const r = await fetch(`/api/papers/${paperId}/claims`);
+            if (!r.ok) return;
+            const data = (await r.json()) as { ok: boolean; claims: Claim[] };
+            const target = (data.claims ?? []).find((c) => c.id === claimId);
+            if (target) {
+              setOpenClaim(target);
+              setTab("claims");
+            }
+          } catch {
+            // best-effort: the user can still click the Claims row
+          }
         }}
       />
 

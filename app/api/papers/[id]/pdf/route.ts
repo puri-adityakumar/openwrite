@@ -2,10 +2,19 @@
 //
 // Returns the paper's source PDF (seed fixture or uploaded). The
 // Reader's pdfjs-dist fetches this URL to render a page.
+//
+// Qodo #1: source_pdf is user-controllable (the papers POST route
+// accepts it). Restricting to the repo root is not enough — any file
+// under the repo (including .env, schema.sql, etc.) was reachable.
+// We now restrict to an explicit allowlist of directories:
+//   - fixtures/papers/   (seed paper)
+//   - data/pdfs/         (uploaded PDFs; lives in .gitignore)
+// Absolute paths are still rejected so an attacker cannot point to
+// /etc/passwd via the source_pdf column.
 
 import { NextResponse, type NextRequest } from "next/server";
 import { readFile } from "node:fs/promises";
-import { join, isAbsolute, resolve } from "node:path";
+import { join, isAbsolute, resolve, sep } from "node:path";
 import { requireUser } from "../../../../../lib/session";
 import { query } from "../../../../../lib/db";
 
@@ -14,8 +23,20 @@ export const dynamic = "force-dynamic";
 
 type PaperRow = { user_id: string; source_pdf: string | null };
 
-// Repo root resolves to two levels up from this file: app/api/papers/[id]/pdf/route.ts
 const REPO_ROOT = resolve(process.cwd());
+
+// Allowlist: relative paths must start with one of these directories.
+const ALLOWED_PREFIXES = ["fixtures/papers/", "data/pdfs/"];
+
+function isAllowedPath(absolutePath: string): boolean {
+  // Compute the path relative to the repo root using forward slashes
+  // (POSIX-style) so the comparison is OS-agnostic.
+  const rel = absolutePath.startsWith(REPO_ROOT + sep)
+    ? absolutePath.slice(REPO_ROOT.length + 1)
+    : absolutePath;
+  const relPosix = rel.split(sep).join("/");
+  return ALLOWED_PREFIXES.some((prefix) => relPosix === prefix.slice(0, -1) || relPosix.startsWith(prefix));
+}
 
 export async function GET(
   _req: NextRequest,
@@ -37,11 +58,18 @@ export async function GET(
   if (!path) {
     return NextResponse.json({ ok: false, error: "no PDF for this paper" }, { status: 404 });
   }
-  // Resolve safely: relative paths are anchored at the repo root; absolute
-  // paths are taken as-is. Anything outside the repo is rejected.
-  const absolute = isAbsolute(path) ? path : join(REPO_ROOT, path);
+  // Qodo #1: reject absolute paths outright. Relative paths are
+  // resolved against the repo root, then must fall under the
+  // allowlist above.
+  if (isAbsolute(path)) {
+    return NextResponse.json({ ok: false, error: "absolute PDF paths are not allowed" }, { status: 400 });
+  }
+  const absolute = join(REPO_ROOT, path);
   if (!absolute.startsWith(REPO_ROOT)) {
     return NextResponse.json({ ok: false, error: "PDF path outside repo" }, { status: 400 });
+  }
+  if (!isAllowedPath(absolute)) {
+    return NextResponse.json({ ok: false, error: "PDF path not in allowlist" }, { status: 400 });
   }
   try {
     const buf = await readFile(absolute);

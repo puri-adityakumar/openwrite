@@ -41,7 +41,8 @@ describe("Pulse — 5-line cap", () => {
       "10:00:05 [verifier] proposing Verify gate",
       "10:00:06 [verifier] reproduced 91.7%",
     ];
-    const { container } = render(<Pulse state={makeStateWith(lines)} lastHeartbeat="10:00:15" />);
+    // No heartbeat here — the 5-line cap is the event budget.
+    const { container } = render(<Pulse state={makeStateWith(lines)} lastHeartbeat={null} />);
     const items = container.querySelectorAll('[data-testid="pulse-line"]');
     expect(items.length).toBe(5);
     // The last 5 input lines should be the first 5 rendered (newest at bottom).
@@ -54,6 +55,41 @@ describe("Pulse — 5-line cap", () => {
     const { container } = render(<Pulse state={makeStateWith(lines)} lastHeartbeat={null} />);
     const items = container.querySelectorAll('[data-testid="pulse-line"]');
     expect(items.length).toBe(1);
+  });
+
+  it("Qodo #5: heartbeat takes one of the 5 slots (5 events + hb = 5 total)", () => {
+    const lines = [
+      "10:00:00 [agent]    turn started",
+      "10:00:01 [reader]   fetched §1",
+      "10:00:02 [reader]   fetched §2",
+      "10:00:03 [searcher] found 3 works",
+      "10:00:04 [extractor] extracted 2 claims",
+    ];
+    const { container } = render(<Pulse state={makeStateWith(lines)} lastHeartbeat="10:00:15" />);
+    const items = container.querySelectorAll('[data-testid="pulse-line"]');
+    const hb = container.querySelector('[data-testid="pulse-heartbeat"]');
+    // Heartbeat reserves a slot: 4 event lines + 1 hb = 5 total.
+    expect(items.length).toBe(4);
+    expect(hb).not.toBeNull();
+    expect(container.querySelector('[data-testid="pulse"]')?.getAttribute("data-line-count")).toBe("5");
+  });
+
+  it("Qodo #5: 7 events + hb shows only the last 4 events + hb", () => {
+    const lines = [
+      "10:00:00 [agent]    turn started",
+      "10:00:01 [reader]   fetched §1",
+      "10:00:02 [reader]   fetched §2",
+      "10:00:03 [searcher] found 3 works",
+      "10:00:04 [extractor] extracted 2 claims",
+      "10:00:05 [verifier] proposing Verify gate",
+      "10:00:06 [verifier] reproduced 91.7%",
+    ];
+    const { container } = render(<Pulse state={makeStateWith(lines)} lastHeartbeat="10:00:15" />);
+    const items = container.querySelectorAll('[data-testid="pulse-line"]');
+    expect(items.length).toBe(4);
+    expect(items[0]?.textContent).toContain("10:00:03");
+    expect(items[3]?.textContent).toContain("10:00:06");
+    expect(container.querySelector('[data-testid="pulse"]')?.getAttribute("data-line-count")).toBe("5");
   });
 });
 

@@ -94,7 +94,6 @@ VALUES (
         "pulse": [
             "8 authors · 11 figures · 4 tables",
             "Trained on WMT 2014 EN-DE and EN-FR translation tasks",
-            "Outperforms prior SOTA on both BLEU and training cost",
             "Introduces multi-head scaled dot-product attention",
             "Foundation for nearly every modern LLM (GPT, BERT, T5, …)"
         ]

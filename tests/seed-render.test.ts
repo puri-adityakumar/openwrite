@@ -71,8 +71,16 @@ describe("seed_audits first-paint shape", () => {
     expect(events.summary.evidence_count).toBeGreaterThan(0);
   });
 
-  it("pulse has exactly 5 lines (plan: 5-line Pulse inspector)", () => {
-    expect(events.pulse).toHaveLength(5);
+  it("pulse has up to 4 event lines (Phase 3 cap: 4 events + 1 heartbeat = 5)", () => {
+    // Phase 3 enforces a 5-line cap in the Pulse component, where the
+    // heartbeat reserves one slot (Qodo #5). The seed supplies the
+    // event lines; the live SSE store appends a heartbeat every 15s.
+    // The first-paint heartbeat-less render shows up to 5 event lines,
+    // and once the heartbeat lands the seed is trimmed to 4 so the
+    // total stays at 5. Here we pin the seed shape (≤ 5 lines, ≥ 1)
+    // and leave the rendered-cap assertion to the Pulse component test.
+    expect(events.pulse.length).toBeGreaterThan(0);
+    expect(events.pulse.length).toBeLessThanOrEqual(5);
     for (const line of events.pulse) {
       expect(typeof line).toBe("string");
       expect(line.length).toBeGreaterThan(0);

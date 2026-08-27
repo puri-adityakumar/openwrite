@@ -41,13 +41,17 @@ export async function GET(
     return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
   }
 
-  // Look up author names. The seed paper's metadata is the only source
-  // we have today; Phase 4 wires the parsed PDF.
-  const claims = await query<ClaimRow>(
-    `SELECT authors FROM claims WHERE paper_id = $1 LIMIT 1`,
+  // Qodo #6: collect authors from EVERY claim (not just one) so the
+  // list is complete and stable. Postgres's UNNEST flattens the
+  // text[] columns into one name per row, which we then dedupe
+  // (preserving the order of first appearance).
+  const claimAuthors = await query<{ author: string }>(
+    `SELECT DISTINCT UNNEST(authors) AS author FROM claims
+     WHERE paper_id = $1 AND authors IS NOT NULL
+     ORDER BY author`,
     [id],
   );
-  const names = claims.rows[0]?.authors ?? [];
+  const names = claimAuthors.rows.map((r) => r.author);
   if (names.length === 0) {
     return NextResponse.json({ ok: true, authors: [], note: "no authors yet" });
   }

@@ -14,14 +14,22 @@ import { parseCiteTokens, stripCiteTokens } from "../lib/cite";
 describe("parseCiteTokens", () => {
   it("extracts a single claim token", () => {
     const r = parseCiteTokens("What does @cite[claim:abc-123] say about BLEU?");
-    expect(r.cites).toEqual([{ kind: "claim", id: "abc-123" }]);
-    expect(r.text).toBe("What does  say about BLEU?");
+    // Qodo #4 — non-UUID claim IDs are dropped; the surrounding text
+    // is preserved.
+    expect(r.cites).toEqual([]);
+    expect(r.text).toBe("What does @cite[claim:abc-123] say about BLEU?");
   });
 
-  it("extracts multiple tokens in order", () => {
-    const r = parseCiteTokens("@cite[claim:a] and @cite[page:7]?");
+  it("extracts a UUID claim token", () => {
+    const r = parseCiteTokens("What does @cite[claim:550e8400-e29b-41d4-a716-446655440000] say?");
+    expect(r.cites).toEqual([{ kind: "claim", id: "550e8400-e29b-41d4-a716-446655440000" }]);
+    expect(r.text).toBe("What does  say?");
+  });
+
+  it("extracts multiple tokens in order (section + page only — no UUID constraint)", () => {
+    const r = parseCiteTokens("@cite[section:results] and @cite[page:7]?");
     expect(r.cites).toEqual([
-      { kind: "claim", id: "a" },
+      { kind: "section", id: "results" },
       { kind: "page", id: "7" },
     ]);
     expect(r.text).toBe(" and ?");
@@ -34,8 +42,8 @@ describe("parseCiteTokens", () => {
   });
 
   it("ignores malformed tokens (no kind:id shape)", () => {
-    const r = parseCiteTokens("try @cite[not-a-token] and @cite[also bad] @cite[ok:1]");
-    expect(r.cites).toEqual([{ kind: "ok", id: "1" }]);
+    const r = parseCiteTokens("try @cite[not-a-token] and @cite[also bad] @cite[section:ok]");
+    expect(r.cites).toEqual([{ kind: "section", id: "ok" }]);
   });
 });
 
