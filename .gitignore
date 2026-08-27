@@ -16,6 +16,9 @@
 .env.local
 .env.*.local
 
+# TypeScript incremental build cache
+tsconfig.tsbuildinfo
+
 # Data
 /data/pdfs/
 /data/
