@@ -83,13 +83,11 @@ export async function POST(
   let totalTokens = 0;
   try {
     const r = await gmiChat({
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: text },
-      ],
+      system,
+      messages: [{ role: "user", content: text }],
     });
-    answer = r.choices[0]?.message.content ?? "";
-    totalTokens = r.usage?.total_tokens ?? 0;
+    answer = r.answer;
+    totalTokens = r.usage.totalTokens;
   } catch (e) {
     return err(502, `GMI error: ${(e as Error).message}`);
   }
