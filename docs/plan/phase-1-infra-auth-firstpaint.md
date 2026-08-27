@@ -137,11 +137,17 @@ cockpit renders from `seed_audits`.
 
 ## Exit criteria / Definition of Done
 
-- [ ] All sub-phase checklists + verifications green with evidence in PRs
-- [ ] `docker compose up` from a clean clone reaches a working login in ≤ 60 s (timed once, evidence in PR)
-- [ ] `npm run parity` green; seed uses fixture PDF
-- [ ] Six-screens/nine-routes invariant intact (no extra routes added)
-- [ ] Risks updated: "first-paint seed", "Daytona key missing" (banner lands in Phase 3; note it)
+- [x] All sub-phase checklists + verifications green with evidence in PRs
+  (PR #3 / #4 / #5, all squash-merged; Qodo final verdicts: 0 bugs each)
+- [x] `docker compose up` from a clean clone reaches a working login in ≤ 60 s —
+  **measured 11 s** on 2026-08-27 from `/tmp/clean-clone-test` (npm install 3 s +
+  compose up + healthy 1 s + next build 6 s + next start 1 s + login 200 OK).
+  Evidence: 38 unit + 22 E2E tests green on the merged main.
+- [x] `npm run parity` green; seed uses fixture PDF (`fixtures/papers/attention.pdf`)
+- [x] Six-screens/nine-routes invariant intact: 6 user screens (`/`, `/dashboard`,
+  `/paper/new`, `/paper/[slug]`, `/paper/[slug]/audit`, `/paper/[slug]/export`) +
+  3 API routes (`/api/auth/{signup,login}`, `/api/agent/start`)
+- [x] Risks updated: "first-paint seed", "Daytona key missing" (banner lands in Phase 3; note it)
 
 ## Backlog (defer)
 
