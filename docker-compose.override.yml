@@ -1,0 +1,42 @@
+# Recap dev override — non-clashing host port remaps and Next.js dev port.
+#
+# Per docs/architecture.md:
+#   - TrueForge server exposes on 18790 (override of upstream 8791 default 8790).
+#   - Postgres is on 5433 (already set in the vendored TrueForge file).
+#   - Redis is on 6380 (already set in the vendored TrueForge file).
+#   - Next.js (Recap app) is on 13000 (handled by the package.json `dev` script,
+#     not Docker, so judges can iterate without rebuilding the container).
+#
+# Activate with:  docker compose -f docker-compose.yml -f docker-compose.override.yml up
+# Compose also auto-merges this file when running `docker compose up` from the
+# repo root (the standard convention).
+
+name: recap
+
+services:
+  # Postgres needs POSTGRES_PASSWORD set (the TrueForge env file is optional).
+  # Defaults match what TrueForge's own dev compose uses; override via host
+  # .env if you want different credentials.
+  postgres:
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trueforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trueforge}
+      POSTGRES_DB: ${POSTGRES_DB:-trueforge}
+
+  server:
+    ports:
+      - "18790:8790"
+    environment:
+      # Re-point the host-facing origin so MCP OAuth callbacks work on 18790.
+      PUBLIC_BASE_URL: http://localhost:18790
+      # Match the Postgres defaults above so the server can connect.
+      POSTGRES_USER: ${POSTGRES_USER:-trueforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trueforge}
+      POSTGRES_DB: ${POSTGRES_DB:-trueforge}
+
+  # recap-db-init needs the same creds to create the `recap` database and
+  # apply schema + seed.
+  recap-db-init:
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trueforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trueforge}

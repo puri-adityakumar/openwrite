@@ -13,6 +13,7 @@
 
 # Data
 /data/pdfs/
+/data/
 
 # OS
 .DS_Store
