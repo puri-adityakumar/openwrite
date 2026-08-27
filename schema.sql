@@ -80,8 +80,27 @@ CREATE INDEX IF NOT EXISTS gates_paper_id_created_at_idx
 -- The seed_audits table renders the cockpit on first paint. Its event shape
 -- MUST match the live `audit` table's event shape — enforced by
 -- scripts/parity.ts. See docs/architecture.md "SSE flow" and Phase 1/6.
+-- One row per paper (the demo paper), so the seed INSERT can target
+-- (paper_id) with ON CONFLICT for idempotency.
 CREATE TABLE IF NOT EXISTS seed_audits (
     id          bigserial PRIMARY KEY,
-    paper_id    uuid NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+    paper_id    uuid NOT NULL UNIQUE REFERENCES papers(id) ON DELETE CASCADE,
     events      jsonb NOT NULL
 );
+
+-- Idempotent migration: ensure the UNIQUE constraint on seed_audits.paper_id
+-- exists even if the table was created by an earlier schema without it.
+-- (CREATE TABLE IF NOT EXISTS is a no-op when the table already exists, so
+-- the UNIQUE clause above does not apply to existing tables.)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'seed_audits_paper_id_key'
+          AND conrelid = 'public.seed_audits'::regclass
+    ) THEN
+        ALTER TABLE seed_audits ADD CONSTRAINT seed_audits_paper_id_key UNIQUE (paper_id);
+    END IF;
+END
+$$;

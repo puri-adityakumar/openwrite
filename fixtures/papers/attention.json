@@ -15,5 +15,5 @@
   "year": 2017,
   "venue": "NeurIPS",
   "fixture_pdf": "fixtures/papers/attention.pdf",
-  "notes": "Minimal stub PDF (1 page, 89-byte content stream) — Replay must work offline and not require downloading the real arXiv PDF. The seed_audits row carries the actual surface data (trail, coverage, summary, pulse)."
+  "notes": "Minimal stub PDF (1 page, byte-accurate offsets) — Replay must work offline and not require downloading the real arXiv PDF. The seed_audits row carries the actual surface data (trail, coverage, summary, pulse)."
 }

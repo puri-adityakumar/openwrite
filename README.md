@@ -24,6 +24,23 @@ npm install
 docker compose up          # the only setup command beyond install
 ```
 
+### Prerequisite: the TrueForge source tree
+
+`docker compose up` builds the TrueForge server image from source. That
+build context lives **outside this repository** at `../trueforge`
+(configurable via `TF_SOURCE_DIR` — see
+[docker-compose.trueforge.yml](docker-compose.trueforge.yml)). Clone the
+TrueForge source as a sibling of this repo before `docker compose up`:
+
+```bash
+git clone https://github.com/truefoundry/trueforge.git ../trueforge
+```
+
+If you want to skip the full TrueForge build for local development, the
+compose override exposes a `server`-only service that you can skip with
+`docker compose up postgres redis recap-db-init` — the cockpit still
+renders from `seed_audits` without a live TrueForge instance.
+
 After `npm install`, the only setup command is `docker compose up` (see the
 100% local standing constraint in [docs/README.md](docs/README.md)). When
 the containers are up, open http://localhost:13000.
