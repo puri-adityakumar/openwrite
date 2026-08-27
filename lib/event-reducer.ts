@@ -54,6 +54,10 @@ export type LiveEvent = {
     | "sandbox.created"
     | "mcp.initialize";
   payload: Record<string, unknown>;
+  // Server-side mirror of the resolved threadId→role map so the client
+  // store can apply the same role prefix without re-parsing event text.
+  // Optional — older events from the seed path don't carry it.
+  _roles?: Record<string, string>;
 };
 
 const MAX_PULSE = 200;
@@ -247,28 +251,26 @@ export function deriveTrail(state: LiveState): TrailPill[] {
     if (line.includes("subagent:")) scoreDone = true;
     if (line.includes("[gate]")) verifyHit = true;
   }
-  // Each "stage" is true if the corresponding pill has been completed.
-  // For "paused" status, we treat the Verify pill as in-progress (NOT
-  // done) — the agent is awaiting approval at the gate, so the verify
-  // step is not yet complete.
   const isPaused = state.status === "paused";
   const isErrored = state.status === "error";
   const isDone = state.status === "done";
+  // Qodo #8: a successful run with no approval gate should mark Verify
+  // as done (not "running"). The pill is complete when the run reaches
+  // the terminal `done` state. A gate-hit run keeps Verify "running"
+  // while paused (the agent is awaiting approval at that stage).
+  const verifyDone = verifyHit || isDone;
   const stages: boolean[] = [
     sourceDone,
     parseDone,
     extractDone,
     scoreDone,
-    // verify: completed only when the run finishes. While paused, the
-    // pill is in-flight (gate awaiting approval); mark it false so the
+    // verify: complete on a normal run end, OR when a gate fires and
+    // the run then completes. While paused, mark false so the
     // running-pill index lands on it.
-    verifyHit && !isPaused && !isErrored,
-    // done: only set once the run is fully done.
+    verifyDone && !isPaused && !isErrored,
     isDone,
   ];
   if (isErrored) {
-    // Mark everything up to the current stage as done; the failing stage
-    // (last) becomes "error".
     const err = [...stages];
     const lastTrue = err.lastIndexOf(true);
     return TRAIL_ORDER.map((p, i) => {
@@ -277,7 +279,6 @@ export function deriveTrail(state: LiveState): TrailPill[] {
       return { id: p.id, label: p.label, state: "pending" };
     });
   }
-  // The currently-running pill is the first one not yet done.
   const runningIdx = stages.findIndex((d) => !d);
   return TRAIL_ORDER.map((p, i) => {
     if (i < runningIdx) return { id: p.id, label: p.label, state: "done" };

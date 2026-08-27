@@ -29,60 +29,87 @@ describe("P7#2 — route config (binding)", () => {
 });
 
 describe("P7#1 — first-write ordering", () => {
-  it("a failing iterator surfaces an error frame on the first byte", async () => {
-    // Build a fake async iterator that throws on next(). The handler should
-    // call iterator.next() BEFORE writing the SSE preamble, and the thrown
-    // error should propagate to a JSON 500 — never a silent 200 + stuck stream.
-    const mod = await import("../app/api/agent/stream/route");
-    const handler = (mod as { POST?: unknown }).POST;
-    expect(typeof handler).toBe("function");
-
-    // A request with a sessionId that has no underlying client must throw
-    // a clean 500 (or Response with 500) — never a 200 with an empty stream.
-    const req = new Request("http://test/api/agent/stream?sessionId=missing&turnId=t1");
-    let caught: unknown = null;
-    let resp: Response | null = null;
-    try {
-      resp = await (handler as (r: Request) => Promise<Response>)(req);
-    } catch (e) {
-      caught = e;
-    }
-    // The handler must not return a silent 200 with an empty body.
-    if (resp) {
-      expect(resp.status).toBeGreaterThanOrEqual(400);
-    } else {
-      // Or throw — either is acceptable. We forbid the silent 200 case.
-      expect(caught).not.toBeNull();
-    }
+  it("failing first iterator and missing-auth paths are both covered by the Qodo #1 tests below", () => {
+    // The detailed coverage lives in the "Qodo #1" describe block. This
+    // block exists to keep the P7 audit table readable; the runtime +
+    // dynamic + first-write tests are the binding set.
+    expect(true).toBe(true);
   });
 });
 
 describe("P7#2 — no await between enqueues (binding)", () => {
-  it("the stream from a successful iterator emits all events as SSE lines without backpressure awaits", async () => {
-    // The P7#2 rule says: no `await` between writing SSE lines. We verify by
-    // driving the route handler with a fake async iterator that yields
-    // 5 events quickly, then read the response body and assert the bytes
-    // form a well-formed SSE stream (each event followed by a blank line).
-    const mod = await import("../app/api/agent/stream/route");
-    const handler = (mod as { POST?: unknown }).POST;
-    expect(typeof handler).toBe("function");
-
-    // We can't directly inject an iterator into the route in this unit test
-    // (the route pulls the TrueForge client from lib/trueforge.ts), so we
-    // assert the structural property: the response from a successful run
-    // is a Response with content-type text/event-stream and a non-null body.
-    const req = new Request(
-      "http://test/api/agent/stream?sessionId=fake&turnId=fake&paperId=00000000-0000-0000-0000-000000000000",
-    );
-    const resp = await (handler as (r: Request) => Promise<Response>)(req);
+  it("buildStream returns a text/event-stream response with a non-null body", async () => {
+    // We drive the pure buildStream() function (separated from the auth
+    // wrapper) so the P7#2 SSE pipeline can be exercised in unit tests
+    // without a session cookie.
+    const { buildStream } = await import("../app/api/agent/stream/route");
+    const resp = await buildStream({
+      sessionId: "sess_fake",
+      turnId: "turn_fake",
+      paperId: "00000000-0000-0000-0000-000000000000",
+    });
     expect(resp.headers.get("content-type") ?? "").toMatch(/text\/event-stream/);
-    // Body is a ReadableStream; we just confirm it exists.
     expect(resp.body).not.toBeNull();
-    // Drain it so the test process can exit.
     if (resp.body) {
       await new Response(resp.body).arrayBuffer();
     }
   }, 10_000);
+
+  it("POST handler returns 401 when no session cookie is present", async () => {
+    const mod = await import("../app/api/agent/stream/route");
+    const handler = (mod as { POST?: unknown }).POST;
+    expect(typeof handler).toBe("function");
+    const req = new Request(
+      "http://test/api/agent/stream?sessionId=fake&turnId=fake&paperId=00000000-0000-0000-0000-000000000000",
+    );
+    const resp = await (handler as (r: Request) => Promise<Response>)(req);
+    // No JWT cookie in this unit test → 401, never a silent 200.
+    expect(resp.status).toBe(401);
+  });
+});
+
+describe("Qodo #1 — first iterator failure returns 500 (not 200)", () => {
+  it("a failing first iterator.next() surfaces a 500 with JSON body", async () => {
+    // Inject a fake client whose createTurnStream returns an iterator that
+    // throws on first next(). buildStream must return 500 BEFORE any SSE
+    // bytes go out.
+    const { __setTrueForgeClientForTest } = await import("../lib/trueforge");
+    const { buildStream } = await import("../app/api/agent/stream/route");
+    const failingIterator = {
+      next: async () => { throw new Error("simulated connection failure"); },
+      return: async () => ({ value: undefined, done: true }),
+      throw: async (e: unknown) => { throw e; },
+      [Symbol.asyncIterator]: () => failingIterator,
+    };
+    __setTrueForgeClientForTest({
+      async startSession() { return { sessionId: "x", turnId: "y" }; },
+      async createTurnStream() { return { iterator: failingIterator as unknown as AsyncIterableIterator<never>, cancel: () => {} }; },
+      async cancelSession() {},
+    });
+    const resp = await buildStream({ sessionId: "x", turnId: "y", paperId: "p" });
+    expect(resp.status).toBe(500);
+    expect(resp.headers.get("content-type") ?? "").toMatch(/application\/json/);
+    __setTrueForgeClientForTest(null);
+  });
+
+  it("an empty iterator (done on first next) returns 204", async () => {
+    const { __setTrueForgeClientForTest } = await import("../lib/trueforge");
+    const { buildStream } = await import("../app/api/agent/stream/route");
+    const emptyIterator = {
+      next: async () => ({ value: undefined, done: true as const }),
+      return: async () => ({ value: undefined, done: true as const }),
+      throw: async (e: unknown) => { throw e; },
+      [Symbol.asyncIterator]: () => emptyIterator,
+    };
+    __setTrueForgeClientForTest({
+      async startSession() { return { sessionId: "x", turnId: "y" }; },
+      async createTurnStream() { return { iterator: emptyIterator as unknown as AsyncIterableIterator<never>, cancel: () => {} }; },
+      async cancelSession() {},
+    });
+    const resp = await buildStream({ sessionId: "x", turnId: "y", paperId: "p" });
+    expect(resp.status).toBe(204);
+    __setTrueForgeClientForTest(null);
+  });
 });
 
 describe("P7#3 — turn.done with requiredActions emits a turn.paused terminal frame", () => {

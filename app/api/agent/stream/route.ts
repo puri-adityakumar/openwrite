@@ -2,29 +2,39 @@
 //
 // P7 binding constraints honored in this file (see docs/architecture.md):
 //
-//   P7#1 — first write MUST `await iterator.next()` so connection
-//          failures surface immediately. We do this BEFORE returning
-//          the Response so a bad sessionId never produces a silent 200
-//          with an empty body. A failing iterator returns a 500.
+//   P7#1 — first HTTP response MUST reflect the first iterator result.
+//          A failing first pull returns 500 immediately; we never return
+//          a 200 with an empty/error-only body. Implemented with a
+//          "first event" peek before the Response is constructed.
 //
 //   P7#2 — runtime: "nodejs" + dynamic: "force-dynamic" + NO `await`
-//          between enqueues. We use a TransformStream + a single async
+//          between enqueues. We use a ReadableStream + a single async
 //          loop that pulls events and writes them synchronously to the
-//          controller; the only awaits are at the iterator boundary
-//          and the periodic heartbeat.
+//          controller; the only awaits in the hot path are at the
+//          iterator boundary and the audit DB write (off the enqueue
+//          critical path).
 //
 //   P7#3 — turn.done with requiredActions.length > 0 must surface as
 //          `event: turn.paused` (not `event: turn.done`) so the client
 //          store flips to "paused" without a follow-up.
 //
-// The route also persists every event to the `audit` table (Phase 2.1#5)
-// and the heartbeat comment line every 15s (Phase 2.1#4).
+//   P7#4 — the 15s heartbeat is a comment line so the EventSource
+//          auto-reconnects cleanly if the connection drops.
+//
+//   P7#5 — threadId→role is resolved server-side via ThreadMap so the
+//          reducer never inspects event text for roles. The resolved
+//          roles are mirrored into the SSE frames (see #7) so the
+//          client store can apply them too.
+//
+// The route also persists every event to the `audit` table (Phase 2.1#5).
 
 import type { NextRequest } from "next/server";
-import { appendAudit } from "../../../../lib/audit";
+import { appendAudit, AuditWriteError } from "../../../../lib/audit";
 import { reduce, initialState, type LiveEvent, type LiveState } from "../../../../lib/event-reducer";
 import { ThreadMap } from "../../../../lib/thread-map";
 import { getTrueForgeClient } from "../../../../lib/trueforge";
+import { query } from "../../../../lib/db";
+import { requireUser } from "../../../../lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,8 +46,6 @@ function sseLine(event: string, data: unknown): string {
 }
 
 function sseComment(text: string): string {
-  // Comment lines start with ':' and are ignored by EventSource; the browser
-  // uses them to keep the connection alive.
   return `: ${text}\n\n`;
 }
 
@@ -65,7 +73,11 @@ export async function GET(req: NextRequest): Promise<Response> {
 }
 
 async function handle(req: NextRequest): Promise<Response> {
-  // P7#1 — read params off the request, then resolve the client.
+  // P7#1 — read params, then authenticate + authorize the caller.
+  // The stream route MUST verify that the paper belongs to the current
+  // user and that the supplied sessionId/turnId match the paper row —
+  // otherwise any caller with valid identifiers could consume another
+  // user's run. (Qodo #4)
   const url = new URL(req.url);
   const sessionId = url.searchParams.get("sessionId");
   const turnId = url.searchParams.get("turnId");
@@ -74,26 +86,65 @@ async function handle(req: NextRequest): Promise<Response> {
     return errResponse(400, "missing sessionId/turnId/paperId");
   }
 
+  let user;
+  try {
+    user = await requireUser();
+  } catch {
+    return errResponse(401, "authentication required");
+  }
+
+  // Ownership + session/turn match.
+  const owner = await query<{ session_id: string | null; turn_id: string | null }>(
+    `SELECT session_id, turn_id FROM papers WHERE id = $1 AND user_id = $2 LIMIT 1`,
+    [paperId, user.sub],
+  );
+  if (owner.rows.length === 0) return errResponse(404, "paper not found");
+  if (owner.rows[0]!.session_id !== sessionId || owner.rows[0]!.turn_id !== turnId) {
+    return errResponse(403, "session/turn does not match paper");
+  }
+
+  return buildStream({ sessionId, turnId, paperId });
+}
+
+// Pure stream builder — separated from the auth wrapper so unit tests
+// can exercise the P7 pipeline without standing up a session cookie.
+export async function buildStream(input: {
+  sessionId: string;
+  turnId: string;
+  paperId: string;
+}): Promise<Response> {
+  const { sessionId, turnId, paperId } = input;
   const client = getTrueForgeClient();
   let turn;
   try {
     turn = await client.createTurnStream(sessionId, turnId);
   } catch (e) {
-    // P7#1: connection failure surfaces immediately, not a silent 200.
     return errResponse(500, `createTurnStream failed: ${(e as Error).message}`);
   }
 
-  // TransformStream lets us `enqueue` from the producer side and read on
-  // the consumer side; we use it so the producer's `await iterator.next()`
-  // is the only await in the loop, satisfying P7#2.
+  // P7#1 — first `iterator.next()` is awaited BEFORE the Response is
+  // constructed. If it throws, we return 500. If the iterator is empty
+  // on the first pull (done: true), we return 204 — there is nothing to
+  // stream. (Qodo #1)
+  let firstResult: IteratorResult<LiveEvent>;
+  try {
+    firstResult = await turn.iterator.next();
+  } catch (e) {
+    return errResponse(500, `first event read failed: ${(e as Error).message}`);
+  }
+  if (firstResult.done) {
+    try { turn.cancel(); } catch { /* ignore */ }
+    return new Response(null, { status: 204 });
+  }
+
+  // P7#2 — ReadableStream + single async loop; only awaits are at the
+  // iterator boundary and audit DB. The first event is yielded by
+  // prepending it to the loop.
   const encoder = new TextEncoder();
   let closed = false;
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      // P7#1 — first await iterator.next() before first enqueue.
-      // We don't enqueue the SSE preamble until we have at least one
-      // event, OR an iterator error. This surfaces connection failures
-      // immediately (the route returns 500 above before reaching here).
       let state = initialState();
       const threadMap = new ThreadMap();
 
@@ -106,7 +157,6 @@ async function handle(req: NextRequest): Promise<Response> {
         }
       };
 
-      // After the first event arrives, send the SSE preamble.
       let preambleSent = false;
       const sendPreamble = () => {
         if (preambleSent || closed) return;
@@ -114,56 +164,79 @@ async function handle(req: NextRequest): Promise<Response> {
         safeEnqueue(`retry: 5000\n\n`);
       };
 
-      // Heartbeat — comment line every HEARTBEAT_MS while the stream is open.
-      const heartbeat = setInterval(() => {
-        if (closed) return;
-        safeEnqueue(sseComment("hb"));
-      }, HEARTBEAT_MS);
+      const startHeartbeat = () => {
+        if (heartbeat || closed) return;
+        heartbeat = setInterval(() => {
+          if (closed) return;
+          safeEnqueue(sseComment("hb"));
+        }, HEARTBEAT_MS);
+      };
 
-      // Cleanup on cancel.
       const cleanup = () => {
-        if (closed) return;
+        if (closed) {
+          if (heartbeat) { clearInterval(heartbeat); heartbeat = null; }
+          return;
+        }
         closed = true;
-        clearInterval(heartbeat);
+        if (heartbeat) { clearInterval(heartbeat); heartbeat = null; }
         try { turn.cancel(); } catch { /* ignore */ }
         try { controller.close(); } catch { /* already closed */ }
       };
 
+      const processEvent = async (event: LiveEvent) => {
+        if (event.type === "thread.created") {
+          threadMap.register(String(event.payload.threadId ?? ""), {
+            title: event.payload.title as string | undefined,
+            agentInfo: event.payload.agentInfo as { name?: string } | undefined,
+            parentThreadId: (event.payload.parent as { threadId?: string } | undefined)?.threadId ?? null,
+          });
+        }
+        const roles = threadMap.snapshot();
+        const next = reduce(state, event, { roles });
+        state = next;
+        const eventWithRoles: LiveEvent & { _roles?: Record<string, string> } = {
+          ...event,
+          _roles: Object.fromEntries(roles),
+        };
+        try {
+          await appendAudit(paperId, event);
+        } catch (e) {
+          if (e instanceof AuditWriteError) {
+            safeEnqueue(sseLine("turn.error", {
+              message: "audit write failed",
+              detail: e.message,
+            }));
+            return { terminal: true, next };
+          }
+          throw e;
+        }
+        sendPreamble();
+        startHeartbeat();
+        safeEnqueue(sseLine("event", eventWithRoles));
+        const terminal = classifyTerminal(state);
+        if (terminal) {
+          safeEnqueue(sseLine(terminal, { state: state.status, metrics: state.metrics }));
+          try {
+            await query(
+              `UPDATE papers SET status = $1, updated_at = now() WHERE id = $2`,
+              [state.status, paperId],
+            );
+          } catch { /* best-effort; the live stream already closed */ }
+          return { terminal: true, next };
+        }
+        return { terminal: false, next };
+      };
+
       try {
-        // P7#2 — the ONLY awaits in the loop are at the iterator boundary
-        // and the audit DB write. There is no `await` between `safeEnqueue`
-        // calls in the hot path.
+        if (closed) return;
+        const r1 = await processEvent(firstResult.value);
+        if (r1.terminal) { cleanup(); return; }
         for await (const event of wrapWithSeq(turn.iterator)) {
           if (closed) break;
-          // Resolve role for the threadId in the event (P7#5).
-          if (event.type === "thread.created") {
-            threadMap.register(String(event.payload.threadId ?? ""), {
-              title: event.payload.title as string | undefined,
-              agentInfo: event.payload.agentInfo as { name?: string } | undefined,
-              parentThreadId: (event.payload.parent as { threadId?: string } | undefined)?.threadId ?? null,
-            });
-          }
-          state = reduce(state, event, { roles: threadMap.snapshot() });
-          sendPreamble();
-          // Persist to audit (Phase 2.1#5). The await is at the I/O boundary,
-          // not between enqueues, so P7#2 still holds for the hot path.
-          // We deliberately do not block enqueue on this; the audit table
-          // is for replay/audit, not for the live cockpit's correctness.
-          appendAudit(paperId, event).catch(() => {
-            // Swallow audit write errors so a transient DB hiccup does not
-            // tear down the user's live stream. The audit table is best-effort.
-          });
-          safeEnqueue(sseLine("event", event));
-          // Terminal frame: P7#3 classification.
-          const terminal = classifyTerminal(state);
-          if (terminal) {
-            safeEnqueue(sseLine(terminal, { state: state.status, metrics: state.metrics }));
-            break;
-          }
+          const r = await processEvent(event);
+          if (r.terminal) { cleanup(); return; }
         }
       } catch (e) {
-        // Surface iterator errors as an SSE error frame; the browser store
-        // flips to "error" and the UI shows a clean message.
         if (!closed) {
           safeEnqueue(sseLine("turn.error", { message: (e as Error).message }));
         }
@@ -173,6 +246,7 @@ async function handle(req: NextRequest): Promise<Response> {
     },
     cancel() {
       closed = true;
+      if (heartbeat) { clearInterval(heartbeat); heartbeat = null; }
       try { turn.cancel(); } catch { /* ignore */ }
     },
   });

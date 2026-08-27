@@ -49,17 +49,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
   const source = body.source ?? "";
   const sourceUrl = body.sourceUrl ?? (source.startsWith("http") ? source : null);
+  const sourcePdf = body.sourcePdf ?? (!sourceUrl && source ? source : null);
   const title = body.title ?? null;
   // The slug is unique per (sourceUrl|fixture). For Phase 2 we generate a
   // timestamp suffix so successive starts of the same fixture don't collide.
-  const baseSlug = slugify(sourceUrl ?? body.sourcePdf ?? "paper");
+  const baseSlug = slugify(sourceUrl ?? sourcePdf ?? "paper");
   const slug = `${baseSlug}-${Date.now().toString(36)}`;
 
   const inserted = await query<{ id: string }>(
-    `INSERT INTO papers (user_id, slug, title, source_url, mode, status)
-     VALUES ($1, $2, $3, $4, $5, 'queued')
+    `INSERT INTO papers (user_id, slug, title, source_url, source_pdf, mode, status)
+     VALUES ($1, $2, $3, $4, $5, $6, 'queued')
      RETURNING id`,
-    [user.sub, slug, title, sourceUrl, body.mode],
+    [user.sub, slug, title, sourceUrl, sourcePdf, body.mode],
   );
   const paperId = inserted.rows[0]!.id;
   return NextResponse.json({ ok: true, paperId, slug });

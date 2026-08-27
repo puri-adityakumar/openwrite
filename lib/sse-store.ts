@@ -3,22 +3,25 @@
 // Phase 2.1 — client SSE store using useSyncExternalStore.
 //
 // P7 binding constraints honored here:
-//   P7#1: the server is the source of truth for the reducer; the client
-//         mirrors it for rendering. The browser's native EventSource
-//         delivers typed MessageEvents; we feed each one into the
-//         reducer and call useSyncExternalStore's emit.
+//   P7#1: server is the source of truth; the client mirrors it.
 //   P7#3: terminal frames (turn.done | turn.paused | turn.error) flip
 //         the snapshot's status and close the stream.
-//   P7#4: the 15 s heartbeat is a server-side concern; the client
-//         tolerates the EventSource reconnect (onerror) without
-//         dropping the snapshot.
+//   P7#4: 15s heartbeat is a server-side concern; client tolerates
+//         EventSource reconnect (onerror) without dropping the snapshot.
+//   P7#5: the server mirrors the resolved threadId→role map on each
+//         event (`_roles` field) so the client store can apply the
+//         same prefix without re-parsing text. (Qodo #7)
 //
-// Note: we do not bundle the `eventsource-parser` package on the
-// client — the browser's native EventSource already gives us typed
-// events. The package remains available for any Node-side consumer
-// (tests, future edge handlers) but is not imported here.
+// Qodo findings addressed in this file:
+//   #2 — opening a new URL resets the snapshot to initial state.
+//   #6 — terminal streams do not re-open (applyTerminal clears the
+//        URL so the LiveCockpit stops re-invoking open()).
+//   #7 — server-mirrored roles are consumed; the client builds its
+//        own ThreadMap from event payloads + the server's mirror.
+//   #10 — useCockpitState uses useEffect to open/close; the
+//         EventSource is closed on unmount.
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import {
   initialState,
   reduce,
@@ -35,16 +38,23 @@ type Snapshot = {
   status: LiveState["status"];
 };
 
+function emptySnapshot(): Snapshot {
+  const s = initialState();
+  return { state: s, pills: deriveTrail(s), status: s.status };
+}
+
 class CockpitStore {
   private listeners = new Set<Listener>();
-  private snapshot: Snapshot = {
-    state: initialState(),
-    pills: deriveTrail(initialState()),
-    status: "queued",
-  };
+  private snapshot: Snapshot = emptySnapshot();
+  // Roles the server has mirrored to the client. The client reducer
+  // consumes this via the `roles` arg, so the browser can render the
+  // same role prefix without re-parsing event text. (Qodo #7)
+  private roles = new Map<string, string>();
   private es: EventSource | null = null;
   private url: string | null = null;
-  private closed = false;
+  // Set when the server emits a terminal frame; the next render does
+  // NOT re-open the stream. (Qodo #6)
+  private terminal: boolean = false;
 
   subscribe = (l: Listener): (() => void) => {
     this.listeners.add(l);
@@ -53,55 +63,40 @@ class CockpitStore {
 
   getSnapshot = (): Snapshot => this.snapshot;
 
-  /** Open the SSE stream against the given URL (typically /api/agent/stream?...). */
+  /** Open the SSE stream against the given URL. Idempotent; safe in effects. */
   open(url: string): void {
-    if (this.url === url && this.es) return; // idempotent
+    if (this.url === url && this.es) return;
+    if (this.terminal) return; // do not reopen a finished stream
     this.close();
+    // Qodo #2 — a new URL means a new paper; reset the snapshot so
+    // pulse, coverage, and cursor do not carry over.
+    this.snapshot = emptySnapshot();
+    this.roles = new Map();
     this.url = url;
-    this.closed = false;
     const es = new EventSource(url, { withCredentials: true });
     this.es = es;
 
     es.addEventListener("event", (e: MessageEvent<string>) => {
-      // Per-event frame from the route: `data:` carries the full LiveEvent JSON.
       try {
         const ev = JSON.parse(e.data) as LiveEvent;
+        // Qodo #7 — absorb the server-mirrored roles into the client's
+        // own map so the reducer can resolve threadId → role.
+        if (ev._roles) {
+          for (const [tid, role] of Object.entries(ev._roles)) {
+            this.roles.set(tid, role);
+          }
+        }
         this.applyEvent(ev);
       } catch {
         // Malformed frame — skip.
       }
     });
-    es.addEventListener("turn.done", (e: MessageEvent<string>) => {
-      this.applyTerminal("done", e.data);
-    });
-    es.addEventListener("turn.paused", (e: MessageEvent<string>) => {
-      this.applyTerminal("paused", e.data);
-    });
-    es.addEventListener("turn.error", (e: MessageEvent<string>) => {
-      this.applyTerminal("error", e.data);
-    });
+    es.addEventListener("turn.done", () => this.applyTerminal("done"));
+    es.addEventListener("turn.paused", () => this.applyTerminal("paused"));
+    es.addEventListener("turn.error", () => this.applyTerminal("error"));
     es.onerror = () => {
-      // EventSource auto-reconnects with the server's `retry:` value.
-      // We just bump a render so the UI shows the current state.
       this.emit();
     };
-  }
-
-  private applyEvent(ev: LiveEvent): void {
-    const next = reduce(this.snapshot.state, ev);
-    this.snapshot = { state: next, pills: deriveTrail(next), status: next.status };
-    this.emit();
-  }
-
-  private applyTerminal(kind: "done" | "paused" | "error", _data: string): void {
-    const status: LiveState["status"] = kind;
-    this.snapshot = {
-      state: { ...this.snapshot.state, status, terminal: { kind } },
-      pills: deriveTrail({ ...this.snapshot.state, status }),
-      status,
-    };
-    this.emit();
-    this.close();
   }
 
   close(): void {
@@ -110,6 +105,23 @@ class CockpitStore {
       this.es = null;
     }
     this.url = null;
+  }
+
+  private applyEvent(ev: LiveEvent): void {
+    const next = reduce(this.snapshot.state, ev, { roles: this.roles });
+    this.snapshot = { state: next, pills: deriveTrail(next), status: next.status };
+    this.emit();
+  }
+
+  private applyTerminal(kind: "done" | "paused" | "error"): void {
+    this.terminal = true;
+    this.snapshot = {
+      state: { ...this.snapshot.state, status: kind, terminal: { kind } },
+      pills: deriveTrail({ ...this.snapshot.state, status: kind }),
+      status: kind,
+    };
+    this.emit();
+    this.close();
   }
 
   /** Test/dev hook: seed the store without a real EventSource. */
@@ -123,7 +135,6 @@ class CockpitStore {
   }
 }
 
-// Singleton per browser tab. The Next.js client runtime is one tab.
 let _store: CockpitStore | null = null;
 export function getCockpitStore(): CockpitStore {
   if (typeof window === "undefined") {
@@ -133,28 +144,40 @@ export function getCockpitStore(): CockpitStore {
   return _store;
 }
 
-// Fallback snapshot for SSR — useSyncExternalStore requires a stable
-// reference per call so we return a fresh-but-equal object on each
-// server-side render. (The store swaps in on the first client render.)
-const SERVER_SNAPSHOT: Snapshot = {
-  state: initialState(),
-  pills: deriveTrail(initialState()),
-  status: "queued",
-};
+// Stable SSR snapshot — useSyncExternalStore needs the same reference
+// when the underlying state hasn't changed.
+const SERVER_SNAPSHOT: Snapshot = emptySnapshot();
 
 export function useCockpitState(streamUrl: string | null): Snapshot {
-  // The store is browser-only; on the server we return the static
-  // snapshot so the markup renders without throwing.
   const isBrowser = typeof window !== "undefined";
   const store = isBrowser ? getCockpitStore() : null;
   const subscribe = store ? store.subscribe : (() => () => {});
   const getSnapshot = store ? store.getSnapshot : () => SERVER_SNAPSHOT;
   const sub = useSyncExternalStore(subscribe, getSnapshot, () => SERVER_SNAPSHOT);
-  if (store && streamUrl) {
-    // Open is idempotent; safe to call on every render.
-    store.open(streamUrl);
-  } else if (store) {
-    store.close();
-  }
+
+  // Qodo #10 — open/close in a useEffect so the EventSource is closed
+  // on unmount. The previous implementation called store.open() during
+  // render, which is unsafe (side effects in render) and left the
+  // connection open after the component unmounted.
+  const lastUrl = useRef<string | null>(null);
+  useEffect(() => {
+    if (!store) return;
+    if (streamUrl && streamUrl !== lastUrl.current) {
+      lastUrl.current = streamUrl;
+      store.open(streamUrl);
+    } else if (!streamUrl && lastUrl.current) {
+      lastUrl.current = null;
+      store.close();
+    }
+    return () => {
+      // On unmount, close. The store will be reused by the next mount
+      // because it is a singleton per tab.
+      if (store && !streamUrl) {
+        store.close();
+        lastUrl.current = null;
+      }
+    };
+  }, [streamUrl, store]);
+
   return sub;
 }
