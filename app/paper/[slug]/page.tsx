@@ -20,12 +20,14 @@ export default async function PaperPage({
 }: {
   params: Promise<{ slug: string }>;
 }) {
-  await requireUser();
+  const user = await requireUser();
   const { slug } = await params;
 
   const paperResult = await query<PaperRow>(
-    `SELECT id, slug, title, status FROM papers WHERE slug = $1 LIMIT 1`,
-    [slug],
+    `SELECT id, slug, title, status FROM papers
+     WHERE slug = $1 AND user_id = $2
+     LIMIT 1`,
+    [slug, user.sub],
   );
   const paper = paperResult.rows[0];
   if (!paper) notFound();

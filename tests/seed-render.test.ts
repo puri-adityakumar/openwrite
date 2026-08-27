@@ -79,3 +79,24 @@ describe("seed_audits first-paint shape", () => {
     }
   });
 });
+
+describe("paper-page ownership scope (Qodo bug: ownership not enforced)", () => {
+  // The /paper/[slug] page must filter by user_id, not by slug alone. The
+  // easiest invariant we can assert in a unit test (no live DB) is that
+  // the SQL string contains both the slug and the user_id parameter, in
+  // the WHERE clause, and that there is no code path that selects by slug
+  // alone.
+  it("the paper-page SQL includes both slug and user_id constraints", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const src = fs.readFileSync(
+      path.resolve(__dirname, "../app/paper/[slug]/page.tsx"),
+      "utf8",
+    );
+    // Both parameters must be referenced.
+    expect(src).toMatch(/slug\s*=\s*\$1/);
+    expect(src).toMatch(/user_id\s*=\s*\$2/);
+    // No SQL with a bare slug = $1 (the old leak).
+    expect(src).not.toMatch(/WHERE\s+slug\s*=\s*\$1(?!\s+AND)/i);
+  });
+});

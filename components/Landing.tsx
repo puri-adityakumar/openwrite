@@ -90,7 +90,7 @@ export function Landing() {
           </button>
         </form>
         <p className="mt-3 text-xs text-[var(--muted)]">
-          Need an account? <a href="/api/auth/signup" className="underline">Create one</a>
+          Need an account? <a href="/signup" className="underline">Create one</a>
         </p>
         <p className="mt-6 text-sm font-mono text-[var(--muted)]">
           demo@local / demo1234
