@@ -1,10 +1,10 @@
-// Phase 1.3 — root layout: imports Tailwind globals, renders the top
-// header (Recap brand + power-user footer "Powered by ..."), and wraps
-// every page. The full marketing footer lands later; this layout only
-// contains the chrome the stranger test asserts.
+// Phase 1.3 + 3.3 — root layout: imports Tailwind globals, renders the
+// top header (Recap brand + power-user footer "Powered by ..."), wraps
+// every page, and mounts the global EnvBanner.
 
 import type { ReactNode } from "react";
 import "./globals.css";
+import { EnvBannerHost } from "../components/EnvBannerHost";
 
 export const metadata = {
   title: "Recap",
@@ -15,6 +15,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body>
+        <EnvBannerHost />
         <header className="border-b border-[var(--border)] px-6 py-3 flex items-center justify-between">
           <a href="/" className="font-semibold tracking-tight">Recap</a>
           <span className="text-xs text-[var(--muted)]">

@@ -46,9 +46,9 @@ test("live-run: /paper/new start -> /paper/[slug] streams turn.paused", async ({
   await expect(page.getByTestId("trail-pills")).toBeVisible();
 
   // 3) The fake adapter emits 12 events and a turn.paused terminal.
-  //    Wait for the Pulse to populate at least 5 lines and for the
-  //    status to flip to "paused".
-  await expect(page.getByTestId("pulse")).toContainText(/turn started/i, { timeout: 10_000 });
+  //    Phase 3 caps the Pulse at 5 lines, so the early "turn started"
+  //    line scrolls off. Assert the terminal line is visible instead.
+  await expect(page.getByTestId("pulse")).toContainText(/turn paused/i, { timeout: 10_000 });
   // sandbox.created evidence: the status row carries the sandboxId.
   await expect(page.getByTestId("sandbox-id")).toContainText(/sbx_/, { timeout: 10_000 });
   // The Halt button + Cap chip are stubs in Phase 2 (wired in Phase 5).
