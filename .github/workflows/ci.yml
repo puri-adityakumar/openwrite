@@ -1,0 +1,74 @@
+# Phase 6.4 — CI. Every PR runs: typecheck, unit suite, and the
+# seed-vs-live parity guard. A parity drift fails the build (the plan's
+# "parity enforced in CI" exit criterion).
+#
+# The unit suite includes DB-backed tests (gates, halt, cap, replay,
+# approve), so a Postgres 17 service is provisioned on the same host
+# port the app expects (5433) and schema.sql + seed.sql are applied —
+# mirroring the compose `recap-db-init` sidecar.
+#
+# The Playwright E2E suite additionally needs the app server; it stays
+# a local pre-merge gate (documented in docs/plan/
+# phase-6-hardening-and-docs.md). CI keeps the fast, hermetic checks.
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: trueforge
+          POSTGRES_PASSWORD: trueforge
+          POSTGRES_DB: recap
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U trueforge"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://trueforge:trueforge@localhost:5433/recap
+      JWT_SECRET: ci-only-secret-0123456789abcdef
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply schema + seed (mirrors recap-db-init)
+        run: |
+          docker run --rm --network host \
+            -v "$PWD/schema.sql:/sql/schema.sql:ro" \
+            -v "$PWD/seed.sql:/sql/seed.sql:ro" \
+            -e PGPASSWORD=trueforge \
+            postgres:17-alpine sh -c '
+              until pg_isready -h 127.0.0.1 -p 5433 -U trueforge; do sleep 1; done
+              psql -h 127.0.0.1 -p 5433 -U trueforge -d recap -f /sql/schema.sql
+              psql -h 127.0.0.1 -p 5433 -U trueforge -d recap -f /sql/seed.sql
+            '
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Seed-vs-live parity guard
+        run: npm run parity

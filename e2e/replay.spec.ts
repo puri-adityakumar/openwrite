@@ -51,9 +51,11 @@ test("replay creates a fresh session + sandbox and shows both runs in the audit"
   ).toBeVisible({ timeout: 15_000 });
 
   // The replay flips the paper to running; the cockpit reattaches and
-  // the new run pauses on its own fresh gate.
-  await page.goto(`/paper/${slug}`);
-  await expect(page.getByTestId("verify-card")).toBeVisible({ timeout: 15_000 });
+  // the new run pauses on its own fresh gate. domcontentloaded keeps
+  // the goto clear of the SSE connection's load-event race on WebKit.
+  await page.goto(`/paper/${slug}`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("verify-card")).toBeVisible({ timeout: 20_000 });
+  await page.waitForLoadState("load");
 
   // Freshness proof: the replay sandbox differs from the original.
   const after = (await (await api.get(`/api/agent/replay?paperId=${paperId}`)).json()) as {
@@ -67,7 +69,7 @@ test("replay creates a fresh session + sandbox and shows both runs in the audit"
   // The audit shows BOTH runs: the original rows, the replay marker,
   // and each run's own Verify request + sandbox row (ids differ —
   // the freshness proof, visible row-for-row).
-  await page.goto(`/paper/${slug}/audit`);
+  await page.goto(`/paper/${slug}/audit`, { waitUntil: "domcontentloaded" });
   const rows = page.getByTestId("audit-row");
   await expect(rows.filter({ hasText: "replay started" })).toHaveCount(1);
   await expect(rows.filter({ hasText: "Verify requested" })).toHaveCount(2);
