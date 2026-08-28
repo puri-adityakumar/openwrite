@@ -223,3 +223,25 @@ describe("listJustExpired (Qodo #3 deny-on-expiry path)", () => {
     expect(just.find((r) => r.id === g.id)).toBeDefined();
   });
 });
+
+describe("decideGate on an overdue pending gate (Qodo review #2 — atomic TTL guard)", () => {
+  it("refuses to decide, flips the row to expired, and throws ConflictError", async () => {
+    const g = await makeGate("toctou1");
+    await query(`UPDATE gates SET expires_at = now() - interval '1 second' WHERE id = $1`, [g.id]);
+    const { decideGate, ConflictError } = await import("../lib/gates");
+    await expect(decideGate({ gateId: g.id, decision: "allow" })).rejects.toBeInstanceOf(ConflictError);
+    const after = await getGateById(g.id);
+    // The decision must NOT land: a late/direct allow must never
+    // approve past the server-side TTL (no TOCTOU between the route's
+    // pre-check and the UPDATE).
+    expect(after.status).toBe("expired");
+    expect(after.decided_reason).toBeNull();
+  });
+
+  it("still decides a pending gate whose expires_at is in the future", async () => {
+    const g = await makeGate("toctou2");
+    const { decideGate } = await import("../lib/gates");
+    const out = await decideGate({ gateId: g.id, decision: "allow" });
+    expect(out.status).toBe("allowed");
+  });
+});

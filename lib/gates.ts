@@ -158,26 +158,40 @@ export type DecideInput = {
 // Throws ConflictError if the gate is not in `pending` state (the spec
 // calls this out: replaying an approval for a non-pending gate is a
 // 409). Throws NotFoundError if the gate does not exist.
+//
+// The UPDATE atomically requires expires_at > now() (Qodo review #2 —
+// no TOCTOU between the route's TTL pre-check and this write): a late
+// or direct decision on an overdue gate cannot land; the row flips to
+// 'expired' and the caller gets a 409 instead.
 export async function decideGate(input: DecideInput): Promise<GateRow> {
   const target = await getGateById(input.gateId);
   if (target.status !== "pending") {
     throw new ConflictError(`gate already ${target.status}`);
   }
   const status: GateStatus = input.decision === "allow" ? "allowed" : "denied";
+  const now = new Date();
   const { rows } = await query<GateRow>(
     `UPDATE gates
         SET status = $2,
-            decided_at = now(),
+            decided_at = $4,
             decided_reason = $3
       WHERE id = $1
         AND status = 'pending'
+        AND expires_at > $4
       RETURNING id, paper_id, kind, severity, status, thread_id, tool_call_id,
                 tool_name, payload, expires_at, decided_at, decided_reason, created_at`,
-    [input.gateId, status, input.reason ?? null],
+    [input.gateId, status, input.reason ?? null, now.toISOString()],
   );
   if (rows.length === 0) {
-    // Lost a race — another decision was applied between our getGateById
-    // and the update. Report 409 to the caller.
+    // Two possible races: another decision landed, or the TTL passed
+    // between our read and this write. Distinguish so the caller sees
+    // the truthful 409: an overdue pending gate is flipped to expired
+    // and reported as expired.
+    const current = await getGateById(input.gateId);
+    if (current.status === "pending" && new Date(current.expires_at) <= now) {
+      await expireGateRow(input.gateId, now);
+      throw new ConflictError(`gate expired at ${current.expires_at}`);
+    }
     throw new ConflictError(`gate already decided`);
   }
   return rows[0]!;

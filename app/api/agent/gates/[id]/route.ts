@@ -12,14 +12,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { query } from "../../../../../lib/db";
 import { requireUser } from "../../../../../lib/session";
 import {
-  expireOverdueGates,
   getGateById,
-  listJustExpired,
   secondsUntilExpiry,
-  EXPIRY_COPY,
   NotFoundError,
 } from "../../../../../lib/gates";
-import { getTrueForgeClient } from "../../../../../lib/trueforge";
+import { resolveExpiredGates } from "../../../../../lib/gate-expiry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,39 +36,10 @@ export async function GET(
     return err(401, "authentication required");
   }
   const { id } = await params;
-  // Expire any overdue gates first so the snapshot reflects truth.
-  const now = new Date();
-  await expireOverdueGates(now);
-  // Qodo #3 — for any gate that just flipped to 'expired', send a
-  // deny approval to TrueForge so the agent unpauses. We do this on
-  // the snapshot route (called by the cockpit's countdown poll) so
-  // the next reload sees a 'running' status. Errors are swallowed
-  // (best-effort) — the gate row is already terminal, the cockpit
-  // will surface the expired copy and offer a restart path.
-  const justExpired = await listJustExpired(now);
-  if (justExpired.length > 0) {
-    const client = getTrueForgeClient();
-    for (const g of justExpired) {
-      const sessionRes = await query<{ session_id: string | null }>(
-        `SELECT session_id FROM papers WHERE id = $1 LIMIT 1`,
-        [g.paper_id],
-      );
-      const sessionId = sessionRes.rows[0]?.session_id;
-      if (!sessionId) continue;
-      try {
-        await client.resumeTurnWithApproval({
-          sessionId,
-          threadId: g.thread_id,
-          toolCallId: g.tool_call_id,
-          decision: "deny",
-          reason: EXPIRY_COPY,
-        });
-      } catch (e) {
-        // Best-effort; the row is already terminal.
-        console.error("[gate-snapshot] deny-on-expiry resume failed:", (e as Error).message);
-      }
-    }
-  }
+  // Expire any overdue gates and resolve them upstream: each just-
+  // expired gate's TrueForge turn gets the deny approval and the paper
+  // reattaches to the resumed turn (lib/gate-expiry.ts). Best-effort.
+  await resolveExpiredGates(new Date());
   let gate;
   try {
     gate = await getGateById(id);

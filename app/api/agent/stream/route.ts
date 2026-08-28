@@ -215,40 +215,51 @@ export async function buildStream(input: {
             flat.toolName ?? first.name ?? first.toolName ?? "tool",
           );
           const threadId = String(flat.threadId ?? "");
-          try {
-            await insertGate({
-              paperId,
-              threadId,
-              toolCallId,
-              toolName,
-              // Qodo #7 — the kind/severity are not in the wire event.
-              // The default is a verify gate (the only one we ship
-              // today). The live adapter can override by setting
-              // `gateKind` / `gateSeverity` in the payload (this is
-              // an internal extension, not on the TrueForge wire).
-              kind: (typeof flat.gateKind === "string"
-                ? flat.gateKind
-                : "verify") as "verify" | "publish" | "save",
-              severity: (typeof flat.gateSeverity === "string"
-                ? flat.gateSeverity
-                : "irreversible") as "reversible" | "irreversible",
-              payload: event.payload as Record<string, unknown>,
-            });
-          } catch (e) {
-            // Qodo #8 — gate persistence failure must not be silent.
-            // Log the failure and flip the paper to 'error' so the
-            // cockpit renders a "gate unavailable" badge and the
-            // user is not stranded on a paused run with no Allow/Deny
-            // path. The audit table still records the upstream event
-            // below; this just surfaces the persistence-layer problem.
-            console.error("[stream] insertGate failed:", (e as Error).message);
+          // Qodo review #6 — an approval event with NO extractable
+          // tool-call id can never be approved (the resume contract
+          // requires one), and inserting it would occupy the
+          // (threadId, '') unique key. Skip the insert; the event
+          // still flows to the audit + cockpit.
+          if (!toolCallId) {
+            console.error(
+              "[stream] tool.approval_required without a tool-call id — skipping gate insert",
+            );
+          } else {
             try {
-              await query(
-                `UPDATE papers SET status = 'error', updated_at = now() WHERE id = $1`,
-                [paperId],
-              );
-            } catch (e2) {
-              console.error("[stream] papers.status=error update failed:", (e2 as Error).message);
+              await insertGate({
+                paperId,
+                threadId,
+                toolCallId,
+                toolName,
+                // Qodo #7 — the kind/severity are not in the wire event.
+                // The default is a verify gate (the only one we ship
+                // today). The live adapter can override by setting
+                // `gateKind` / `gateSeverity` in the payload (this is
+                // an internal extension, not on the TrueForge wire).
+                kind: (typeof flat.gateKind === "string"
+                  ? flat.gateKind
+                  : "verify") as "verify" | "publish" | "save",
+                severity: (typeof flat.gateSeverity === "string"
+                  ? flat.gateSeverity
+                  : "irreversible") as "reversible" | "irreversible",
+                payload: event.payload as Record<string, unknown>,
+              });
+            } catch (e) {
+              // Qodo #8 — gate persistence failure must not be silent.
+              // Log the failure and flip the paper to 'error' so the
+              // cockpit renders a "gate unavailable" badge and the
+              // user is not stranded on a paused run with no Allow/Deny
+              // path. The audit table still records the upstream event
+              // below; this just surfaces the persistence-layer problem.
+              console.error("[stream] insertGate failed:", (e as Error).message);
+              try {
+                await query(
+                  `UPDATE papers SET status = 'error', updated_at = now() WHERE id = $1`,
+                  [paperId],
+                );
+              } catch (e2) {
+                console.error("[stream] papers.status=error update failed:", (e2 as Error).message);
+              }
             }
           }
         }
