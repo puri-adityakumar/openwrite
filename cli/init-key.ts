@@ -8,7 +8,7 @@
 // .env.example when it doesn't exist; refuses empty values. The
 // content logic is pure (buildEnvContent) and unit-tested.
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, chmodSync } from "node:fs";
 import path from "node:path";
 
 export function buildEnvContent(
@@ -20,9 +20,14 @@ export function buildEnvContent(
   for (const [key, value] of entries) {
     if (!value) throw new Error(`refusing to set ${key}: value is empty`);
     const line = `${key}=${value}`;
-    const pattern = new RegExp(`^${key}=.*$`, "m");
-    if (pattern.test(content)) {
-      content = content.replace(pattern, line);
+    // Line-based exact-prefix replacement (Qodo review #3 — never
+    // interpolate a user-supplied key into a RegExp: metacharacters
+    // would throw or match lookalike variables, e.g. A.B hitting A0B).
+    const lines = content.split("\n");
+    const idx = lines.findIndex((l) => l.startsWith(`${key}=`));
+    if (idx >= 0) {
+      lines[idx] = line;
+      content = lines.join("\n");
     } else {
       content = content.replace(/\n*$/, "\n") + line + "\n";
     }
@@ -45,7 +50,10 @@ export function main(argv: string[], cwd: string = process.cwd()): void {
   const existing = existsSync(envPath) ? readFileSync(envPath, "utf8") : null;
   const example = existsSync(examplePath) ? readFileSync(examplePath, "utf8") : null;
   const out = buildEnvContent(existing, entries, example);
-  writeFileSync(envPath, out);
+  // Secret-bearing file: owner-only permissions regardless of umask
+  // (Qodo review #4 — default 0644 would expose keys to local users).
+  writeFileSync(envPath, out, { mode: 0o600 });
+  chmodSync(envPath, 0o600);
   for (const [key] of entries) {
     console.log(`init-key: ${key} written to .env`);
   }

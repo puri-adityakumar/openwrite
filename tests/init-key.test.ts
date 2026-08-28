@@ -47,3 +47,35 @@ describe("buildEnvContent — .env upsert", () => {
     expect(out).toContain("Recap environment");
   });
 });
+
+describe("buildEnvContent — metacharacter keys (Qodo review #3)", () => {
+  it("a key with a regex dot must NOT replace a lookalike variable", async () => {
+    const { buildEnvContent } = await import("../cli/init-key");
+    const out = buildEnvContent("A0B=keep\nOTHER=x\n", [["A.B", "new"]]);
+    expect(out).toContain("A0B=keep");
+    expect(out).toContain("A.B=new");
+  });
+
+  it("a key with regex metacharacters inserts safely", async () => {
+    const { buildEnvContent } = await import("../cli/init-key");
+    const out = buildEnvContent("OTHER=x\n", [["A+B(C)", "v"]]);
+    expect(out).toContain("A+B(C)=v");
+    expect(out).toContain("OTHER=x");
+  });
+});
+
+describe("main() — .env file permissions (Qodo review #4)", () => {
+  it("creates .env with 0600 (owner-only) permissions", async () => {
+    const { mkdtempSync, rmSync, statSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const dir = mkdtempSync(`${tmpdir()}/initkey-`);
+    try {
+      const { main } = await import("../cli/init-key");
+      main(["JWT_SECRET=smoke"], dir);
+      const mode = statSync(`${dir}/.env`).mode & 0o777;
+      expect(mode).toBe(0o600);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

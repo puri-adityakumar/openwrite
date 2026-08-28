@@ -6,7 +6,7 @@
 // close. Static assets only: the slides are pre-rendered screenshots
 // in /public/tour, so the tour works offline.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const SLIDES: Array<{ src: string; caption: string }> = [
   { src: "/tour/1-landing.png", caption: "Landing — sign in with the printed demo creds, one click." },
@@ -21,20 +21,53 @@ const SLIDES: Array<{ src: string; caption: string }> = [
 export function Tour() {
   const [open, setOpen] = useState(false);
   const [index, setIndex] = useState(0);
+  const openerRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
+    // Qodo review #6 — establish real keyboard modality: focus moves
+    // into the dialog on open, Tab cycles within it, and focus
+    // returns to the opener on close.
+    closeRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        setOpen(false);
+        return;
+      }
+      if (e.key !== "Tab" || !modalRef.current) return;
+      const focusables = Array.from(
+        modalRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input, [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0]!;
+      const last = focusables[focusables.length - 1]!;
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey && (active === first || !modalRef.current.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (active === last || !modalRef.current.contains(active))) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
+  const close = () => {
+    setOpen(false);
+    openerRef.current?.focus();
+  };
+
   return (
     <>
       <button
         type="button"
+        ref={openerRef}
         data-testid="tour-open"
         onClick={() => { setOpen(true); setIndex(0); }}
         className="fixed bottom-5 right-5 z-40 rounded-full border border-[var(--border)] bg-[var(--panel)] px-4 py-2 text-sm shadow-md hover:bg-[var(--panel-2)]"
@@ -49,14 +82,17 @@ export function Tour() {
           data-testid="tour-modal"
           role="dialog"
           aria-modal="true"
+          aria-labelledby="tour-title"
+          ref={modalRef}
         >
           <div className="w-full max-w-2xl rounded-lg border border-[var(--border)] bg-[var(--bg)] p-4 shadow-xl">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">How Recap works</h2>
+              <h2 className="text-sm font-semibold" id="tour-title">How Recap works</h2>
               <button
                 type="button"
+                ref={closeRef}
                 data-testid="tour-close"
-                onClick={() => setOpen(false)}
+                onClick={close}
                 className="rounded border border-[var(--border)] px-2 py-0.5 text-sm text-[var(--muted)] hover:bg-[var(--panel-2)]"
               >
                 ✕ Close
