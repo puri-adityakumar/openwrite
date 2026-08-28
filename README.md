@@ -13,6 +13,9 @@ sandbox. First paint is a populated demo run, not an empty state.
 
 Full product spec: [docs/product.md](docs/product.md).
 Full architecture: [docs/architecture.md](docs/architecture.md).
+Security model: [SECURITY.md](SECURITY.md). What is real vs previewed
+today: [TECHNICAL.md](TECHNICAL.md). New here? The **ⓘ How it works**
+button on the dashboard walks the seven surfaces with screenshots.
 
 ## Quickstart
 
@@ -55,6 +58,13 @@ the containers are up, open http://localhost:13000.
 The demo credentials on the landing page are visible by default
 (`demo@local / demo1234`) so a tired judge is one click from the cockpit.
 
+### Environment keys (power-user path)
+
+The in-app banner walks you through any missing keys at runtime (with a
+copyable one-liner). If you prefer the terminal,
+`npx tsx cli/init-key.ts DAYTONA_API_KEY=… GMI_API_KEY=…` upserts keys
+into `.env` — seeding it from `.env.example` when it doesn't exist yet.
+
 ## Qodo Code Review Evidence
 
 Every substantive change lands through a pull request reviewed by the Qodo
@@ -71,6 +81,19 @@ correct triggers are PR open / reopen / ready-for-review, or the
 `/agentic_review` comment fallback). The fix is in commit `0b936bd` on the
 same branch and the re-review marked the bug ✓ Resolved. The branch
 `chore/install-tsx` was deleted on merge.
+
+**Representative substantive review (merged):** [#11 — feat(phase-4):
+approval gates + phase-5 control
+surfaces](https://github.com/puri-adityakumar/openwrite/pull/11). Qodo
+returned **17 findings across two review passes**; every one was triaged
+in-thread — 9 fixed test-first (atomic approval-TTL guard, deny-on-expiry
+with paper bookkeeping, pause-suspends-stream registry, retryable stop,
+cap-event dedupe, replay gate supersession, expired-publish lock, hold
+cancellation at TTL 0, empty-tool-call-id guard), the stale-vs-HEAD ones
+answered with the closing commit and test, and the remaining deferrals
+documented. The PR merged only after the full suite went green
+(226/226 unit, 54/54 E2E). This fix-then-merge loop is the project norm:
+PRs #3–#10 followed the same Qodo-review gate.
 
 **Phase 0 bootstrap:** the four initial commits on `main` (`a203040`,
 `1ed94ba`, `173ceda`, `a734b64`) were pushed directly to establish the

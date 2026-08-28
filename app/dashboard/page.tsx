@@ -7,6 +7,7 @@
 import Link from "next/link";
 import { requireUser } from "../../lib/session";
 import { query } from "../../lib/db";
+import { Tour } from "../../components/tour";
 
 export const dynamic = "force-dynamic";
 
@@ -85,8 +86,9 @@ export default async function DashboardPage() {
         )}
       </div>
       <p className="mt-6 text-xs text-[var(--muted)]">
-        <Link href="#" className="inline-block rounded-full border border-[var(--border)] px-2 py-1">ⓘ Tour</Link>
+        Press <span className="rounded-full border border-[var(--border)] px-2 py-0.5">ⓘ How it works</span> for a 7-slide walkthrough.
       </p>
+      <Tour />
     </div>
   );
 }

@@ -1,37 +1,55 @@
-# Technical Notes
+# Technical — what is real vs scaffolded today
 
-> **Status:** Phase 0 scaffold only. No product code yet.
-> The authoritative spec lives in [docs/](docs/) — this file is a thin
-> pointer plus a "what is real vs scaffolded today" snapshot for reviewers
-> and judges.
+The honest table (P4 delta). Everything below is verifiable from the repo:
+each "real" row cites its tests; each "preview" row names its trigger.
 
-## What is real today
+**Repo layout**: Next.js App Router (TypeScript, Tailwind) · Postgres
+(schema + idempotent seed + parity guard) · SSE event pipeline (P7
+constraints) · a TrueForge adapter boundary with two backends (`fake`,
+`live`) · Playwright E2E on desktop + an iPad judge profile.
 
-- **Repository** initialized on `main`, public at
-  https://github.com/puri-adityakumar/openwrite.
-- **Documentation tree** under [docs/](docs/) is the single source of truth.
-- **Build plan** is a software-factory operating manual:
-  [docs/plan/README.md](docs/plan/README.md).
-- **Phase 0 root files** (this commit): `LICENSE`, `NOTICE`,
-  `LICENSES.thirdparty.txt`, `.env.example`, `QODO_REVIEW.md`, `SECURITY.md`,
-  `README.md`, `vitest.config.ts`, `playwright.config.ts` (next), a passing
-  `tests/scaffold.test.ts` (RED-first TDD), and a `package.json` with the
-  7 required scripts.
-- **Locked decisions**: D1 = `/paper/:slug` route, D2 = visible demo creds.
-  Recorded in [docs/product.md](docs/product.md).
+## Real today
 
-## What is scaffolded but not yet real
+| Surface | What actually runs | Evidence |
+|---|---|---|
+| Auth | Signup/sign-in, JWT cookie sessions, per-route ownership checks, rate limits | `tests/auth.test.ts` (12) |
+| Data layer | `schema.sql` (papers, gates, audit, claims, annotations, seed_audits) + idempotent seed + shape-parity script | `tests/schema.test.ts`, `tests/seed.test.ts`, `npm run parity` |
+| Live SSE pipeline | First-write ordering, no-await enqueues, paused-terminal framing, 15s heartbeats, seq dedupe, per-event audit persistence | `tests/sse-route.test.ts`, `tests/event-reducer.test.ts` (16) |
+| Approval gates | Verify/Publish/Save cards (Verify renders the full 11-item G1 spec: typed owner + 3s hold, kill switch, auto risk flags), durable `gates` rows, server-side TTL with atomic expiry, resume-first approval on the same `threadId` with a `user.tool_approval` item | `tests/{gates,approve-route,gate-countdown,verify-card,publish-card,save-card,risk-flags}.test.*`, `e2e/gates.spec.ts` (TC-1/2/3) |
+| Halt + Cap | Pause→Stop cycle (Pause suspends the live stream; Stop terminates + locks; halted runs refuse streams/approvals), per-paper USD/token cap with hard stop + red chip | `tests/halt.test.ts`, `tests/cap.test.ts`, `e2e/halt.spec.ts` |
+| Audit page | Replayable timeline from live `audit` rows or `seed_audits`, rendered identically from one row-mapper; totals footer with the Cost—" rule | `tests/audit-page.test.tsx`, `e2e/audit.spec.ts` |
+| Replay | New session per replay; pending gates superseded + denied upstream; fresh-sandbox proof (`sandbox.created` id differs) | `tests/replay.test.ts`, `e2e/replay.spec.ts` |
+| Export | Review markdown (4 sections + Δ line), attachment download, locked without an allowed Publish gate | `tests/export-md.test.ts`, `e2e/export.spec.ts` |
+| Ask (paper Q&A) | Real GMI Cloud call — Anthropic `/v1/messages` format, normalised usage; live probe returned a grounded answer | PR #10 records the live probe (`totalTokens: 142`) |
+| Ops surfaces | Env banner (missing-key guidance, Sandbox-preview badge), in-app rate limiting, Tour modal (7 slides), `recap init-key` CLI | `tests/env-banner.test.tsx`, `tests/tour.test.tsx`, `tests/init-key.test.ts` |
 
-- **Next.js app, TrueForge override, Postgres schema, Daytona integration** —
-  Phase 1.
-- **The six user screens and nine API routes** — Phases 1–5.
-- **Trail, Coverage, Pulse, Reader, Ask, Audit, Export** — Phases 2–5.
-- **Demo video, cold-judge test, final submission** — Phases 6–7.
+## Preview / fixture today
 
-## How to read the plan
+| Surface | What is previewed | What makes it real |
+|---|---|---|
+| TrueForge adapter | `TRUEFORGE_MODE=fake` (default): a deterministic in-process double emits the full event vocabulary, including the paused terminal and post-resume sequences. The `live` backend exists behind a lazy SDK import — the package is intentionally not installed. | `npm install @truefoundry/trueforge-sdk` + `TRUEFORGE_MODE=live TRUEFORGE_BASE_URL=…` |
+| Daytona sandbox | No `DAYTONA_API_KEY` in dev ⇒ "Sandbox preview" mode: `sandbox.created` events are fake, no real isolation is exercised. The envelope on the Verify card renders "—" when the payload doesn't specify it. | Set `DAYTONA_API_KEY`; verify the live adapter's sandbox path (Phase 7 demo: keys pasted into `.env`) |
+| Seed first paint | The demo paper renders from `seed_audits`/`seed_claims` fixture data (offline-capable by design, P9) | Live runs replace it per paper once a session starts |
+| Publish/Save gates | Cards + plumbing + locks are shipped and unit-tested, but the fake adapter emits only verify-kind gates, so they are not E2E-reachable yet | A real adapter event with `gateKind: "publish" \| "save"` |
+| Live-run Summary/Claims | Live runs render placeholder Summary/Claims until the extract step writes them; the seeded paper shows the real shape | Extract-step wiring (post-hackathon backlog) |
+| USD cost cap | The custom provider reports `total_cost_in_usd === 0`, so the token cap is the effective guard and cost displays as "—" (never "$0.00") | A provider that reports real cost |
 
-1. [docs/README.md](docs/README.md) — doc map and standing constraints.
-2. [docs/plan/README.md](docs/plan/README.md) — the factory manual
-   (Orchestrator + 13 subagent types, TDD loop).
-3. [docs/plan/phase-0-decisions-and-scaffold.md](docs/plan/phase-0-decisions-and-scaffold.md)
-   — the current phase.
+## Known constraints
+
+- The TrueForge server itself is not in this repo (vendored compose file
+  expects a sibling checkout); the demo path runs entirely on the fake
+  adapter + local Postgres/Redis.
+- The active-stream registry (Pause suspension) is single-process —
+  correct for the single-container demo; a multi-instance deployment
+  would move it to Redis pub/sub.
+- `listJustExpired` matches rows by exact `decided_at` timestamp — fine
+  for the single-writer demo path; a queue/claim model is the production
+  shape.
+
+## Pointers
+
+- Architecture deep-dive: [docs/architecture.md](docs/architecture.md)
+- Approval-gates spec (binding): [docs/approval-gates.md](docs/approval-gates.md)
+- Risk register: [docs/risks.md](docs/risks.md)
+- Security model: [SECURITY.md](SECURITY.md)
+- How to read the plan: [docs/plan/README.md](docs/plan/README.md)
