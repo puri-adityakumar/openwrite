@@ -39,7 +39,7 @@ jobs:
 
     env:
       DATABASE_URL: postgres://trueforge:trueforge@localhost:5433/recap
-      JWT_SECRET: ci-test-secret
+      JWT_SECRET: ci-only-secret-0123456789abcdef
 
     steps:
       - uses: actions/checkout@v4
