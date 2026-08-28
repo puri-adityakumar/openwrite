@@ -21,6 +21,9 @@ type PaperRow = {
   session_id: string | null;
   turn_id: string | null;
   source_pdf: string | null;
+  halted: boolean;
+  cap_usd: string | null;
+  cap_tokens: number | null;
 };
 type SeedRow = { events: SeedEvents };
 
@@ -33,12 +36,13 @@ export default async function PaperPage({
   const { slug } = await params;
 
   const paperResult = await query<PaperRow>(
-    `SELECT id, slug, title, status, session_id, turn_id, source_pdf
+    `SELECT id, slug, title, status, session_id, turn_id, source_pdf, halted, cap_usd, cap_tokens
      FROM papers WHERE slug = $1 AND user_id = $2 LIMIT 1`,
     [slug, user.sub],
   );
   const paper = paperResult.rows[0];
   if (!paper) notFound();
+  const capUsd = paper.cap_usd == null ? null : Number(paper.cap_usd);
 
   // Live path: paper has a session — render the live SSE cockpit.
   if (paper.session_id && paper.turn_id) {
@@ -50,6 +54,9 @@ export default async function PaperPage({
         paperId={paper.id}
         streamUrl={streamUrl}
         pdfUrl={paper.source_pdf ? `/api/papers/${paper.id}/pdf` : null}
+        halted={paper.halted}
+        capUsd={capUsd}
+        capTokens={paper.cap_tokens}
       />
     );
   }
@@ -93,6 +100,9 @@ export default async function PaperPage({
       liveState={liveState}
       summary={seed.events.summary}
       pdfUrl={paper.source_pdf ? `/api/papers/${paper.id}/pdf` : null}
+      halted={paper.halted}
+      capUsd={capUsd}
+      capTokens={paper.cap_tokens}
     />
   );
 }

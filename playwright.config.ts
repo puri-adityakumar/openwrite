@@ -8,6 +8,10 @@ import { defineConfig, devices } from "@playwright/test";
 // remain so we can run the same E2E suite judges will see on iPad.
 export default defineConfig({
   testDir: "./e2e",
+  // One demo@local login per run (rate-limit friendly); specs that
+  // need the seeded account use the shared storageState
+  // (test.use({ storageState: DEMO_STATE })) instead of logging in.
+  globalSetup: "./e2e/global-setup.ts",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

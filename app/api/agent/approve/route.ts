@@ -25,6 +25,7 @@ import {
   NotFoundError,
   type GateRow,
 } from "../../../../lib/gates";
+import { appendAuditEvent } from "../../../../lib/audit";
 import { getTrueForgeClient, type TrueForgeClient } from "../../../../lib/trueforge";
 
 export const runtime = "nodejs";
@@ -123,11 +124,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (e instanceof NotFoundError) return err(404, "gate not found");
     throw e;
   }
-  const owner = await query<{ session_id: string | null }>(
-    `SELECT session_id FROM papers WHERE id = $1 AND user_id = $2 LIMIT 1`,
+  const owner = await query<{ session_id: string | null; halted: boolean }>(
+    `SELECT session_id, halted FROM papers WHERE id = $1 AND user_id = $2 LIMIT 1`,
     [gate.paper_id, user.sub],
   );
   if (owner.rows.length === 0) return err(403, "forbidden");
+  // Phase 5.1 — a halted run is locked: no approvals on a stopped run.
+  if (owner.rows[0]!.halted) return err(409, "run is halted (locked)");
   const sessionId = owner.rows[0]!.session_id;
   if (!sessionId) return err(409, "paper has no active session");
 
@@ -152,6 +155,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     } catch (e) {
       console.error("[approve] papers.turn_id update failed:", (e as Error).message);
+    }
+    // Phase 5.2 — the audit vocabulary needs the decision row
+    // ("✓ user allowed" / "✗ user denied"). Best-effort: the decision
+    // itself is already durable on the gate row.
+    try {
+      await appendAuditEvent(gate.paper_id, {
+        type: "gate.decision",
+        payload: { decision: body.decision, reason: body.reason ?? null, gateId: gate.id },
+      });
+    } catch (e) {
+      console.error("[approve] audit decision row failed:", (e as Error).message);
     }
     return NextResponse.json({
       ok: true,

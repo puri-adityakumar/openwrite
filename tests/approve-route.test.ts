@@ -45,6 +45,9 @@ class FakeTF implements TrueForgeClient {
 
 afterAll(async () => {
   __setTrueForgeClientForTest(null);
+  // applyApproval writes gate.decision audit rows against the seed
+  // paper fixture — clean up so the seeded audit stays canonical.
+  await query(`DELETE FROM audit WHERE paper_id = $1 AND events->>'type' = 'gate.decision'`, [PAPER_ID]);
   await closePool();
 });
 

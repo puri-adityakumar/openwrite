@@ -166,3 +166,16 @@ BEGIN
     END IF;
 END
 $$;
+
+-- 7. Phase 5 — halt 2-state + cap guard -----------------------------------
+-- halted: set by POST /api/agent/halt action=stop (user) or the cap
+-- hard-stop (halt_reason='cap'). A halted run is locked: the stream
+-- terminal update and further halt actions must not overwrite it.
+-- halt_reason: 'user' | 'cap'.
+-- cap_usd / cap_tokens: per-paper budget guard (nullable = no cap).
+-- The cost cap governs when the provider reports a real cost; the
+-- token cap governs the custom provider (total_cost_in_usd === 0).
+ALTER TABLE papers ADD COLUMN IF NOT EXISTS halted boolean NOT NULL DEFAULT false;
+ALTER TABLE papers ADD COLUMN IF NOT EXISTS halt_reason text;
+ALTER TABLE papers ADD COLUMN IF NOT EXISTS cap_usd numeric;
+ALTER TABLE papers ADD COLUMN IF NOT EXISTS cap_tokens integer;

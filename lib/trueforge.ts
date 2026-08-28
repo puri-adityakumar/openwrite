@@ -104,61 +104,70 @@ function baseUrl(): string {
 // (which treats seq:0 as uncursorable) means tests that omit seq
 // still work; live tests that pass real seq get the dedupe behavior.
 
-function fakeEventsFor(input: StartSessionInput, paused: boolean): LiveEvent[] {
-  const sessionId = `sess_${input.paperId.slice(0, 8)}`;
-  const turnId = `turn_${Math.random().toString(36).slice(2, 8)}`;
-  const base = `2026-08-27T14:00:00.000Z`;
+// Event timestamps are relative to "now" so the audit page and Pulse
+// show the run's real wall clock (a fixed 2026 fixture date made the
+// audit Duration span from yesterday).
+function fakeEventsFor(
+  sessionId: string,
+  turnId: string,
+  uid: string,
+  paused: boolean,
+): LiveEvent[] {
+  const base = Date.now();
+  const at = (offsetMs: number) => new Date(base + offsetMs).toISOString();
   let seq = 0;
   const next = () => ++seq;
   const ev = (e: Omit<LiveEvent, "seq">): LiveEvent => ({ ...e, seq: next() });
   const events: LiveEvent[] = [
     ev({
-      id: "e1", createdAt: base, type: "turn.created", payload: { sessionId, turnId },
+      id: "e1", createdAt: at(0), type: "turn.created", payload: { sessionId, turnId },
     }),
     ev({
-      id: "e2", createdAt: "2026-08-27T14:00:01.000Z", type: "sandbox.created",
-      payload: { sandboxId: `sbx_${input.paperId.slice(0, 6)}` },
+      id: "e2", createdAt: at(1_000), type: "sandbox.created",
+      // Per-(session, turn) sandbox id: fresh per run (Daytona gives a
+      // fresh sandbox per session), stable across stream reloads of
+      // the SAME turn. `uid` derives from the unique session/turn ids.
+      payload: { sandboxId: `sbx_${uid}` },
     }),
     ev({
-      id: "e3a", createdAt: "2026-08-27T14:00:02.000Z", type: "model.message.delta",
+      id: "e3a", createdAt: at(2_000), type: "model.message.delta",
       payload: { messageId: "m1", threadId: "thr_root", delta: "The Transformer is " },
     }),
     ev({
-      id: "e3b", createdAt: "2026-08-27T14:00:02.100Z", type: "model.message.delta",
+      id: "e3b", createdAt: at(2_100), type: "model.message.delta",
       payload: { messageId: "m1", threadId: "thr_root", delta: "a new simple network " },
     }),
     ev({
-      id: "e3c", createdAt: "2026-08-27T14:00:02.200Z", type: "model.message.delta",
+      id: "e3c", createdAt: at(2_200), type: "model.message.delta",
       payload: { messageId: "m1", threadId: "thr_root", delta: "based on attention." },
     }),
     ev({
-      id: "e4", createdAt: "2026-08-27T14:00:03.000Z", type: "tool.response",
+      id: "e4", createdAt: at(3_000), type: "tool.response",
       payload: { toolName: "parse_pdf", threadId: "thr_root", page: 1, density: 0.6 },
     }),
     ev({
-      id: "e5", createdAt: "2026-08-27T14:00:04.000Z", type: "tool.response",
+      id: "e5", createdAt: at(4_000), type: "tool.response",
       payload: { toolName: "parse_pdf", threadId: "thr_root", page: 2, density: 0.8 },
     }),
     ev({
-      id: "e6", createdAt: "2026-08-27T14:00:05.000Z", type: "thread.created",
+      id: "e6", createdAt: at(5_000), type: "thread.created",
       payload: { threadId: "thr_searcher", title: "claims-section" },
     }),
     ev({
-      id: "e7", createdAt: "2026-08-27T14:00:06.000Z", type: "tool.response",
+      id: "e7", createdAt: at(6_000), type: "tool.response",
       payload: { toolName: "exa_search", threadId: "thr_searcher", page: 3, density: 0.4 },
     }),
     ev({
-      id: "e8", createdAt: "2026-08-27T14:00:07.000Z", type: "thread.done",
+      id: "e8", createdAt: at(7_000), type: "thread.done",
       payload: { threadId: "thr_searcher" },
     }),
   ];
-  // Derive the verifier thread/tool ids from the paper id so a fresh
-  // run never collides with a stale `(thread_id, tool_call_id)` row
-  // left in the gates table by a prior run — the (thread_id,
-  // tool_call_id) unique key would otherwise silently swallow the
-  // insert and the cockpit would never see a gate for the new paper.
-  const verifierThreadId = `thr_verifier_${input.paperId.slice(0, 8)}`;
-  const verifierToolCallId = `tc_${input.paperId.slice(0, 8)}`;
+  // The verifier thread/tool ids are ALSO per-(session, turn): a
+  // replayed paper gets a new session/turn, so the gates table's
+  // (thread_id, tool_call_id) unique key never swallows the new run's
+  // gate insert.
+  const verifierThreadId = `thr_verifier_${uid}`;
+  const verifierToolCallId = `tc_${uid}`;
   if (paused) {
     events.push(
       ev({
@@ -175,7 +184,7 @@ function fakeEventsFor(input: StartSessionInput, paused: boolean): LiveEvent[] {
         },
       }),
       ev({
-        id: "e10", createdAt: "2026-08-27T14:00:09.000Z", type: "turn.done",
+        id: "e10", createdAt: at(9_000), type: "turn.done",
         payload: {
           state: "done",
           requiredActions: [{ type: "tool.approval", toolCallId: verifierToolCallId }],
@@ -186,7 +195,7 @@ function fakeEventsFor(input: StartSessionInput, paused: boolean): LiveEvent[] {
   } else {
     events.push(
       ev({
-        id: "e9", createdAt: "2026-08-27T14:00:08.000Z", type: "turn.done",
+        id: "e9", createdAt: at(8_000), type: "turn.done",
         payload: {
           state: "done",
           requiredActions: [],
@@ -205,7 +214,7 @@ function fakeEventsFor(input: StartSessionInput, paused: boolean): LiveEvent[] {
 // For Deny, the agent emits a single "skipped" line + turn.done so
 // the cockpit leaves the paused state cleanly.
 function fakeResumeEventsFor(
-  input: StartSessionInput,
+  sessionId: string,
   decision: "allow" | "deny",
   threadId: string,
   toolCallId: string,
@@ -218,7 +227,7 @@ function fakeResumeEventsFor(
     return [
       ev({
         id: "r1", createdAt: new Date().toISOString(), type: "turn.created",
-        payload: { sessionId: `sess_${input.paperId.slice(0, 8)}`, turnId },
+        payload: { sessionId, turnId },
       }),
       ev({
         id: "r2", createdAt: new Date().toISOString(), type: "model.message.delta",
@@ -234,7 +243,7 @@ function fakeResumeEventsFor(
   return [
     ev({
       id: "r1", createdAt: new Date().toISOString(), type: "turn.created",
-      payload: { sessionId: `sess_${input.paperId.slice(0, 8)}`, turnId },
+      payload: { sessionId, turnId },
     }),
     ev({
       id: "r2", createdAt: new Date().toISOString(), type: "model.message.delta",
@@ -255,7 +264,10 @@ const resumeMemory: Map<string, { decision: "allow" | "deny"; events: LiveEvent[
 
 class FakeTrueForgeClient implements TrueForgeClient {
   async startSession(input: StartSessionInput): Promise<StartSessionResult> {
-    const sessionId = `sess_${input.paperId.slice(0, 8)}`;
+    // The session id is unique per start (a random suffix): a replayed
+    // paper gets a NEW session, which the per-(session, turn) uid in
+    // createTurnStream turns into a fresh sandbox + fresh verifier ids.
+    const sessionId = `sess_${input.paperId.slice(0, 8)}_${Math.random().toString(36).slice(2, 6)}`;
     const turnId = `turn_${Math.random().toString(36).slice(2, 8)}`;
     return { sessionId, turnId };
   }
@@ -264,19 +276,14 @@ class FakeTrueForgeClient implements TrueForgeClient {
     // sequence (Qodo #5). Otherwise emit the default paused sequence.
     const key = `${sessionId}:${turnId}`;
     const resume = resumeMemory.get(key);
-    // Reconstruct the paper id prefix from the session id so the
-    // verifier thread/tool ids are unique per paper. Falls back to
-    // the all-zero id when the sessionId isn't a fake-generated one
-    // (e.g. test doubles with custom sessionIds).
-    const paperPrefix = sessionId.startsWith("sess_") ? sessionId.slice(5) : "00000000";
-    const input: StartSessionInput = {
-      paperId: `${paperPrefix}-0000-0000-0000-000000000000`,
-      mode: "review",
-      source: "fixture:demo",
-    };
+    // Per-(session, turn) uid: STABLE across reloads of the same turn
+    // (the cockpit re-opens the stream and must see the same sandbox /
+    // verifier ids), UNIQUE across sessions and turns (a replay gets a
+    // fresh sandbox and a fresh gate identity).
+    const uid = `${sessionId.slice(-6)}_${turnId.slice(-6)}`;
     const events = resume
       ? resume.events
-      : fakeEventsFor(input, true);
+      : fakeEventsFor(sessionId, turnId, uid, true);
     let cancelled = false;
     const iterator: AsyncIterableIterator<LiveEvent> = {
       next: async () => {
@@ -295,17 +302,8 @@ class FakeTrueForgeClient implements TrueForgeClient {
     // no-op
   }
   async resumeTurnWithApproval(input: ResumeTurnInput): Promise<ResumeTurnResult> {
-    // Reconstruct the paper id prefix from the session id so the fake
-    // resume event sequence references the same verifier thread as the
-    // paused sequence it follows up on.
-    const paperPrefix = input.sessionId.startsWith("sess_") ? input.sessionId.slice(5) : "00000000";
-    const startInput: StartSessionInput = {
-      paperId: `${paperPrefix}-0000-0000-0000-000000000000`,
-      mode: "review",
-      source: "fixture:demo",
-    };
     const turnId = `turn_resume_${Math.random().toString(36).slice(2, 8)}`;
-    const events = fakeResumeEventsFor(startInput, input.decision, input.threadId, input.toolCallId);
+    const events = fakeResumeEventsFor(input.sessionId, input.decision, input.threadId, input.toolCallId);
     resumeMemory.set(`${input.sessionId}:${turnId}`, { decision: input.decision, events, turnId });
     return { turnId };
   }

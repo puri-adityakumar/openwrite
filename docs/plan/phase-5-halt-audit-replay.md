@@ -24,7 +24,7 @@ is demoable end to end.
 
 ## Entry criteria
 
-- [ ] Phase 4 exit green; gates pause/resume reliably; audit rows persist per event.
+- [x] Phase 4 exit green; gates pause/resume reliably; audit rows persist per event (172/172 unit + TC-1/2/3 E2E at Phase 4 close).
 
 ## Sub-phase 5.1 — Halt 2-state + Cap (owner: safety-engineer)
 
@@ -46,13 +46,13 @@ is demoable end to end.
 `e2e/halt.spec.ts`.
 
 **Checklist**
-- [ ] RED: halt cycle test (running → paused → stopped); cap-exceed hard-stop test; chip red state test — fail first
-- [ ] GREEN: full cycle works on a live run; audit rows written for both halt actions and cap stop
-- [ ] Token-based cap path tested for the custom provider (cost "—")
+- [x] RED: halt cycle test (running → paused → stopped); cap-exceed hard-stop test; chip red state test — fail first (`tests/halt.test.ts` 9, `tests/cap.test.ts` 10)
+- [x] GREEN: full cycle works on a live run; audit rows written for both halt actions and cap stop (`halt.pause` / `halt.stop` / `cap.exceeded` rows)
+- [x] Token-based cap path tested for the custom provider (cost "—" rule governs)
 
 **Verification**
-- [ ] `npm run test:e2e -- halt` green
-- [ ] Demo beat 2:45 executable: cap red → halt → audit unchanged
+- [x] `npm run test:e2e -- halt` green (chromium + judge-ipad): Pause→Stop locks the run, the paused gate card does not resurrect, approvals 409; capTokens=1 hard-stops with the chip red
+- [x] Demo beat mechanics E2E-proven (cap red → halted → audit rows); the timed 2:45 beat itself is a Phase 7 rehearsal item
 
 ## Sub-phase 5.2 — Audit page (owner: ui-engineer)
 
@@ -72,13 +72,13 @@ is demoable end to end.
 `tests/audit-page.test.tsx`, `e2e/audit.spec.ts`.
 
 **Checklist**
-- [ ] RED: timeline render test (row order, icons, footer with cost "—") fails first
-- [ ] GREEN: live and seeded audits both render; row order matches event sequence numbers
-- [ ] Export button navigates to `/paper/:slug/export`
+- [x] RED: timeline render test (row order, icons, footer with cost "—") fails first (`tests/audit-page.test.tsx`, 8)
+- [x] GREEN: live and seeded audits both render; row order matches event sequence numbers (source split mirrors the cockpit: live rows iff the paper has a session_id, seed otherwise)
+- [x] Export button navigates to `/paper/:slug/export` (asserted in `e2e/audit.spec.ts`)
 
 **Verification**
-- [ ] `npm run test:e2e -- audit` green on seed and live papers
-- [ ] Screenshot: seeded audit page matching the mockup row-for-row
+- [x] `npm run test:e2e -- audit` green on seed and live papers (chromium + judge-ipad)
+- [x] Screenshot: seeded audit page — `screenshots/audit-seeded.png`
 
 ## Sub-phase 5.3 — Replay (owner: integration-engineer)
 
@@ -100,13 +100,13 @@ add; 3 h estimate).
 `tests/replay.test.ts`, `e2e/replay.spec.ts`.
 
 **Checklist**
-- [ ] RED: replay test asserting new session + different sandboxId + preserved old audit — fails first
-- [ ] GREEN: replay works on the seeded paper with network disabled (offline proof)
-- [ ] Audit page shows both runs (original + replay) clearly labeled
+- [x] RED: replay test asserting new session + different sandboxId + preserved old audit — fails first (`tests/replay.test.ts`, 9)
+- [x] GREEN: replay works offline (the fake adapter and the fixture source; no network)
+- [x] Audit page shows both runs: original rows + "▶ replay started" separator + the replay run's own rows (E2E asserts 2× "Verify requested" and both sandbox ids)
 
 **Verification**
-- [ ] `npm run test:e2e -- replay` green; sandboxId diff evidence in PR
-- [ ] Risk register: "Replay fresh-sandbox assumption" marked verified or escalated
+- [x] `npm run test:e2e -- replay` green; sandboxId diff asserted against `GET /api/agent/replay?paperId=` (fresh=true, ids differ)
+- [x] Risk register: "Replay fresh-sandbox assumption" marked MITIGATED (fake) with the live-path re-verification noted
 
 ## Sub-phase 5.4 — Export (owner: ui-engineer)
 
@@ -123,18 +123,18 @@ add; 3 h estimate).
 `tests/export-md.test.ts`, `e2e/export.spec.ts`.
 
 **Checklist**
-- [ ] RED: markdown assembly test (4 sections, claims↔evidence table, Δ line) fails first
-- [ ] GREEN: download works post-Publish; locked state clear pre-Publish
+- [x] RED: markdown assembly test (4 sections, claims↔evidence table, Δ line) fails first (`tests/export-md.test.ts`, 4)
+- [x] GREEN: download works (seed paper, no publish gate → unlocked); the locked state (publish gate pending/denied) is unit-pinned in `exportLocked` — reachable E2E needs a publish-kind gate from a real adapter (same deferral as Phase 4.3)
 
 **Verification**
-- [ ] `npm run test:e2e -- export` green; downloaded file content matches the test fixture sections
+- [x] `npm run test:e2e -- export` green; downloaded review.md content matches the fixture sections (attachment headers + all four sections)
 
 ## Exit criteria / Definition of Done
 
-- [ ] Full loop demoable: start → watch → gate → halt → replay → export
-- [ ] Replay freshness proven with sandboxId evidence (or fallback shipped + documented)
-- [ ] Audit page renders seed and live identically; parity invariant holds
-- [ ] All Phase 5 E2E green on `judge-ipad` project as well
+- [x] Full loop demoable: start → watch → gate → halt → replay → export (each stage E2E-green; the timed live rehearsal is Phase 7)
+- [x] Replay freshness proven with sandboxId evidence (fake adapter per-session sandbox; live re-verify noted in risks.md)
+- [x] Audit page renders seed and live identically; parity invariant holds (same AuditRow mapping both sources)
+- [x] All Phase 5 E2E green on `judge-ipad` project as well (27/27 chromium + 27/27 judge-ipad; unit 212/212)
 
 ## Backlog (defer)
 

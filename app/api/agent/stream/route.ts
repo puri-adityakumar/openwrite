@@ -34,6 +34,7 @@ import { reduce, initialState, type LiveEvent, type LiveState } from "../../../.
 import { ThreadMap } from "../../../../lib/thread-map";
 import { getTrueForgeClient } from "../../../../lib/trueforge";
 import { insertGate } from "../../../../lib/gates";
+import { enforceCap } from "../../../../lib/cap-server";
 import { query } from "../../../../lib/db";
 import { requireUser } from "../../../../lib/session";
 
@@ -95,11 +96,13 @@ async function handle(req: NextRequest): Promise<Response> {
   }
 
   // Ownership + session/turn match.
-  const owner = await query<{ session_id: string | null; turn_id: string | null }>(
-    `SELECT session_id, turn_id FROM papers WHERE id = $1 AND user_id = $2 LIMIT 1`,
+  const owner = await query<{ session_id: string | null; turn_id: string | null; halted: boolean }>(
+    `SELECT session_id, turn_id, halted FROM papers WHERE id = $1 AND user_id = $2 LIMIT 1`,
     [paperId, user.sub],
   );
   if (owner.rows.length === 0) return errResponse(404, "paper not found");
+  // Phase 5.1 — a halted run is locked: no stream resurrection.
+  if (owner.rows[0]!.halted) return errResponse(409, "run is halted (locked)");
   if (owner.rows[0]!.session_id !== sessionId || owner.rows[0]!.turn_id !== turnId) {
     return errResponse(403, "session/turn does not match paper");
   }
@@ -271,12 +274,33 @@ export async function buildStream(input: {
         sendPreamble();
         startHeartbeat();
         safeEnqueue(sseLine("event", eventWithRoles));
+        // Phase 5.1 — cap guard. Usage arrives with the metrics on
+        // turn.done; when the paper's cap is crossed, enforceCap locks
+        // the run (halt_reason 'cap') and writes the audit row. The
+        // terminal update below skips halted papers, so the hard stop
+        // sticks.
+        if (event.type === "turn.done") {
+          const m = (event.payload.metrics as { totalTokens?: number; totalCostInUsd?: number } | undefined) ?? {};
+          try {
+            const stopped = await enforceCap(paperId, {
+              totalTokens: m.totalTokens ?? 0,
+              totalCostInUsd: m.totalCostInUsd ?? 0,
+            });
+            if (stopped) {
+              safeEnqueue(sseLine("cap.exceeded", { totalTokens: m.totalTokens ?? 0 }));
+            }
+          } catch (e) {
+            console.error("[stream] cap check failed:", (e as Error).message);
+          }
+        }
         const terminal = classifyTerminal(state);
         if (terminal) {
           safeEnqueue(sseLine(terminal, { state: state.status, metrics: state.metrics }));
           try {
+            // Guard: a halted (user-stopped or cap-stopped) paper is
+            // locked — the terminal status must not overwrite it.
             await query(
-              `UPDATE papers SET status = $1, updated_at = now() WHERE id = $2`,
+              `UPDATE papers SET status = $1, updated_at = now() WHERE id = $2 AND NOT halted`,
               [state.status, paperId],
             );
           } catch { /* best-effort; the live stream already closed */ }

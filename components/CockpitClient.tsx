@@ -22,6 +22,8 @@ import { Ask } from "./ask";
 import { VerifyCard } from "./gates/verify-card";
 import { PublishCard } from "./gates/publish-card";
 import { SaveCard } from "./gates/save-card";
+import { HaltButton } from "./halt-button";
+import { CapChip } from "./cap-chip";
 import type { Claim } from "../lib/claims";
 import type { LiveState, TrailPill } from "../lib/event-reducer";
 
@@ -68,6 +70,10 @@ export type CockpitClientProps = {
   summary: SummaryData;
   pdfUrl: string | null;
   heartbeatEnabled?: boolean;
+  // Phase 5.1 — halt + cap state from the papers row.
+  halted?: boolean;
+  capUsd?: number | null;
+  capTokens?: number | null;
 };
 
 export function CockpitClient({
@@ -80,6 +86,9 @@ export function CockpitClient({
   summary,
   pdfUrl,
   heartbeatEnabled = true,
+  halted = false,
+  capUsd = null,
+  capTokens = null,
 }: CockpitClientProps) {
   const [tab, setTab] = useState<TabId>("summary");
   const [openClaim, setOpenClaim] = useState<Claim | null>(null);
@@ -115,10 +124,13 @@ export function CockpitClient({
           <p className="text-xs text-[var(--muted)]">{title}</p>
         </div>
         <div className="flex items-center gap-2 text-sm text-[var(--muted)]">
-          <span className="rounded border border-[var(--border)] px-2 py-1" data-testid="halt-btn">⏸ Halt</span>
-          <span className="rounded border border-[var(--border)] px-2 py-1" data-testid="cap-chip">
-            Cap: {liveState.metrics.costDisplay}
-          </span>
+          <HaltButton paperId={paperId} status={liveState.status} halted={halted} />
+          <CapChip
+            capUsd={capUsd}
+            capTokens={capTokens}
+            totalTokens={liveState.metrics.totalTokens}
+            costDisplay={liveState.metrics.costDisplay}
+          />
         </div>
       </div>
       <p className="mt-2 text-sm" data-testid="status-row">

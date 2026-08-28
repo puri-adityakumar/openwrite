@@ -1,43 +1,18 @@
-// Phase 1.3 — /paper/:slug/export. Guarded. Renders the review as
-// markdown (TL;DR + claims + reproduction diff + open questions) from
-// the seed_audits summary. The 6-screen invariant is satisfied; live
-// markdown generation lands in Phase 2.
+// Phase 5.4 — /paper/:slug/export. Per mockup: the page-count line,
+// [ Download review.md ], and the section list. The download generates
+// the markdown from the run's stored outputs and stays LOCKED while a
+// publish gate is pending or denied (the Review-mode gate shipped in
+// Phase 4). The markdown assembly lives in lib/export-md.ts (shared
+// with the download route); this page is its preview.
 
 import { notFound } from "next/navigation";
 import { requireUser } from "../../../../lib/session";
 import { query } from "../../../../lib/db";
-import type { SeedEvents } from "../../../../components/Cockpit";
+import { buildExportInput } from "../../../../lib/export-data";
 
 export const dynamic = "force-dynamic";
 
 type PaperRow = { id: string; slug: string; title: string | null; mode: string };
-type SeedRow = { events: SeedEvents };
-
-function toMarkdown(paper: PaperRow, events: SeedEvents): string {
-  return [
-    `# ${paper.title ?? paper.slug}`,
-    "",
-    `> ${events.summary.tldr}`,
-    "",
-    "## Abstract",
-    "",
-    events.summary.abstract,
-    "",
-    "## Claims",
-    "",
-    `${events.summary.claims_count} claims · ${events.summary.evidence_count} evidence pieces.`,
-    "",
-    "## Reproduction diff",
-    "",
-    "Outperforms prior SOTA on both BLEU and training cost. Trained on WMT 2014 EN-DE and EN-FR translation tasks.",
-    "",
-    "## Open questions for the author",
-    "",
-    "- How sensitive is performance to the number of attention heads?",
-    "- What is the failure mode on long sequences?",
-    "",
-  ].join("\n");
-}
 
 export default async function PaperExportPage({
   params,
@@ -56,23 +31,54 @@ export default async function PaperExportPage({
   const paper = paperResult.rows[0];
   if (!paper) notFound();
 
-  const seedResult = await query<SeedRow>(
-    `SELECT events FROM seed_audits WHERE paper_id = $1 LIMIT 1`,
-    [paper.id],
-  );
-  const seed = seedResult.rows[0];
-  const events: SeedEvents | null = seed?.events ?? null;
+  const { markdown, pageCount, locked } = await buildExportInput(paper);
 
   return (
-    <div className="max-w-3xl mx-auto p-6">
-      <h1 className="text-xl font-semibold">
-        Export — {paper.title ?? paper.slug}
-      </h1>
-      <p className="mt-2 text-sm text-[var(--muted)]">
-        {paper.mode} mode produced a markdown review.
+    <div className="max-w-3xl mx-auto p-6" data-testid="export-page">
+      <div className="flex items-start justify-between">
+        <h1 className="text-xl font-semibold">Export — {paper.title ?? paper.slug}</h1>
+        <a href={`/paper/${paper.slug}`} className="text-sm text-[var(--muted)] underline">
+          ◀ Cockpit
+        </a>
+      </div>
+      <p className="mt-2 text-sm text-[var(--muted)]" data-testid="export-page-count">
+        Review mode produced {pageCount} pages of markdown.
       </p>
-      <pre className="mt-4 rounded border border-[var(--border)] bg-[var(--panel-2)] p-3 text-xs font-mono leading-5 overflow-x-auto whitespace-pre-wrap">
-        {events ? toMarkdown(paper, events) : "No seed available. Live export lands in Phase 2."}
+
+      {/* The download: locked until the Review-mode Publish gate is
+          allowed (Phase 4). The seed paper has no publish gate — the
+          demo download flows. */}
+      <div className="mt-4 flex items-center gap-3">
+        {locked ? (
+          <span
+            className="rounded border border-[var(--bad)] px-3 py-1 text-sm text-[var(--bad)]"
+            data-testid="export-locked"
+            title="The Publish gate has not allowed this review"
+          >
+            ⬇ Download locked — allow the Publish gate first
+          </span>
+        ) : (
+          <a
+            href={`/paper/${paper.slug}/export/download`}
+            data-testid="export-download"
+            className="rounded bg-[var(--good)] px-3 py-1 text-sm font-medium text-black"
+          >
+            ⬇ Download review.md
+          </a>
+        )}
+      </div>
+
+      <h2 className="mt-6 text-sm font-medium text-[var(--muted)]">Sections</h2>
+      <ul className="mt-1 list-disc pl-5 text-sm" data-testid="export-sections">
+        <li>TL;DR</li>
+        <li>Claims ↔ evidence</li>
+        <li>Reproduction diff</li>
+        <li>Open questions for the author</li>
+      </ul>
+
+      <h2 className="mt-6 text-sm font-medium text-[var(--muted)]">Preview</h2>
+      <pre className="mt-1 rounded border border-[var(--border)] bg-[var(--panel-2)] p-3 text-xs font-mono leading-5 overflow-x-auto whitespace-pre-wrap">
+        {markdown}
       </pre>
     </div>
   );
