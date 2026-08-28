@@ -197,23 +197,56 @@ export async function buildStream(input: {
         // insert idempotent, so duplicate upstream events don't blow up.
         // The reducer has already pushed the gate into state.gates by
         // the time we get here; the DB row is the durable mirror.
+        //
+        // Qodo #6 — the documented TrueForge event shape nests the
+        // toolCallId under `toolCalls[*]`. The in-repo fake uses flat
+        // `toolCallId` / `toolName` for readability; accept both so
+        // the live adapter works without a code change.
         if (event.type === "tool.approval_required") {
+          const flat = event.payload as Record<string, unknown>;
+          const toolCalls = Array.isArray(flat.toolCalls) ? flat.toolCalls as Array<Record<string, unknown>> : [];
+          const first = toolCalls[0] ?? {};
+          const toolCallId =
+            String(flat.toolCallId ?? first.id ?? first.toolCallId ?? "");
+          const toolName = String(
+            flat.toolName ?? first.name ?? first.toolName ?? "tool",
+          );
+          const threadId = String(flat.threadId ?? "");
           try {
             await insertGate({
               paperId,
-              threadId: String(event.payload.threadId ?? ""),
-              toolCallId: String(event.payload.toolCallId ?? ""),
-              toolName: String(event.payload.toolName ?? "tool"),
-              kind: "verify",
-              severity: "irreversible",
+              threadId,
+              toolCallId,
+              toolName,
+              // Qodo #7 — the kind/severity are not in the wire event.
+              // The default is a verify gate (the only one we ship
+              // today). The live adapter can override by setting
+              // `gateKind` / `gateSeverity` in the payload (this is
+              // an internal extension, not on the TrueForge wire).
+              kind: (typeof flat.gateKind === "string"
+                ? flat.gateKind
+                : "verify") as "verify" | "publish" | "save",
+              severity: (typeof flat.gateSeverity === "string"
+                ? flat.gateSeverity
+                : "irreversible") as "reversible" | "irreversible",
               payload: event.payload as Record<string, unknown>,
             });
           } catch (e) {
-            // The gate insertion must never break the live stream. If
-            // the DB is unreachable, the audit table will still record
-            // the event; the route returns 502 only if audit also
-            // fails below.
+            // Qodo #8 — gate persistence failure must not be silent.
+            // Log the failure and flip the paper to 'error' so the
+            // cockpit renders a "gate unavailable" badge and the
+            // user is not stranded on a paused run with no Allow/Deny
+            // path. The audit table still records the upstream event
+            // below; this just surfaces the persistence-layer problem.
             console.error("[stream] insertGate failed:", (e as Error).message);
+            try {
+              await query(
+                `UPDATE papers SET status = 'error', updated_at = now() WHERE id = $1`,
+                [paperId],
+              );
+            } catch (e2) {
+              console.error("[stream] papers.status=error update failed:", (e2 as Error).message);
+            }
           }
         }
         const roles = threadMap.snapshot();

@@ -180,3 +180,46 @@ describe("constants", () => {
     expect(EXPIRY_COPY).toBe("approval expired — restart verification.");
   });
 });
+
+describe("expireGateRow (Qodo #2 belt-and-braces)", () => {
+  it("flips a pending row whose expires_at has passed to 'expired'", async () => {
+    const g = await makeGate("braces1");
+    await query(`UPDATE gates SET expires_at = now() - interval '1 second' WHERE id = $1`, [g.id]);
+    const { expireGateRow } = await import("../lib/gates");
+    const flipped = await expireGateRow(g.id);
+    expect(flipped).toBe(true);
+    const after = await getGateById(g.id);
+    expect(after.status).toBe("expired");
+  });
+
+  it("does not flip a row that has already been decided", async () => {
+    const g = await makeGate("braces2");
+    const { decideGate, expireGateRow } = await import("../lib/gates");
+    await decideGate({ gateId: g.id, decision: "allow" });
+    const flipped = await expireGateRow(g.id);
+    expect(flipped).toBe(false);
+    const after = await getGateById(g.id);
+    expect(after.status).toBe("allowed");
+  });
+
+  it("does not flip a row whose expires_at is still in the future", async () => {
+    const g = await makeGate("braces3");
+    const { expireGateRow } = await import("../lib/gates");
+    const flipped = await expireGateRow(g.id);
+    expect(flipped).toBe(false);
+    const after = await getGateById(g.id);
+    expect(after.status).toBe("pending");
+  });
+});
+
+describe("listJustExpired (Qodo #3 deny-on-expiry path)", () => {
+  it("returns rows flipped in this call to expireOverdueGates", async () => {
+    const g = await makeGate("just1");
+    await query(`UPDATE gates SET expires_at = now() - interval '1 second' WHERE id = $1`, [g.id]);
+    const { expireOverdueGates, listJustExpired } = await import("../lib/gates");
+    const now = new Date();
+    await expireOverdueGates(now);
+    const just = await listJustExpired(now);
+    expect(just.find((r) => r.id === g.id)).toBeDefined();
+  });
+});

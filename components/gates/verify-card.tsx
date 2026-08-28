@@ -103,6 +103,14 @@ export function VerifyCard(props: VerifyCardProps) {
 
   // Press-and-hold: the Allow button stays disabled until typedOwner
   // matches expectedOwner AND the 3s hold completes.
+  //
+  // The hold timer must NOT live in an effect keyed on `props`: the
+  // parent re-renders mid-press (cockpit heartbeat, panel state), and
+  // a new props object would reset holdStart — the hold could never
+  // complete, or could fire onAllow twice. Keep the callback in a ref
+  // and key the effect on `holding` alone.
+  const onAllowRef = useRef(props.onAllow);
+  onAllowRef.current = props.onAllow;
   useEffect(() => {
     if (!holding) {
       if (holdTimer.current) {
@@ -113,20 +121,21 @@ export function VerifyCard(props: VerifyCardProps) {
       return;
     }
     holdStart.current = Date.now();
-    holdTimer.current = setInterval(() => {
+    const id = setInterval(() => {
       const elapsed = Date.now() - (holdStart.current ?? Date.now());
       const pct = Math.min(100, (elapsed / HOLD_FOR_MS) * 100);
       setHoldProgress(pct);
-      if (pct >= 100 && holdTimer.current) {
-        clearInterval(holdTimer.current);
+      if (pct >= 100) {
+        clearInterval(id);
         holdTimer.current = null;
-        props.onAllow();
+        onAllowRef.current();
       }
     }, 50);
+    holdTimer.current = id;
     return () => {
-      if (holdTimer.current) clearInterval(holdTimer.current);
+      clearInterval(id);
     };
-  }, [holding, props]);
+  }, [holding]);
 
   const seconds = Math.max(0, Math.floor((new Date(gate.expires_at).getTime() - now) / 1000));
   const m = Math.floor(seconds / 60);
@@ -137,9 +146,13 @@ export function VerifyCard(props: VerifyCardProps) {
   const riskFlags: RiskFlag[] = deriveRiskFlags(gate.payload);
   const riskN = highRiskCount(riskFlags);
 
-  // Expired path flips the card into a clean disabled state.
+  // Expired path flips the card into a clean disabled state. Qodo
+  // #9 — `decided` must be true when the countdown has reached 0
+  // even before the server flips the row, otherwise a pending row
+  // at 0:00 still accepts Allow/Deny and Verify can finish a hold
+  // after expiry.
   const expired = gate.status === "expired" || seconds === 0;
-  const decided = gate.status !== "pending";
+  const decided = gate.status !== "pending" || expired;
 
   return (
     <article
@@ -272,9 +285,13 @@ export function VerifyCard(props: VerifyCardProps) {
 
       {/* G1 #10 — Identity confirm */}
       <section data-testid="g1-identity" className="mt-3">
-        <h3 className="text-xs font-semibold text-[var(--muted)]">
-          10 · Identity confirm — type <code className="font-mono">{expectedOwner}</code> and hold Allow for 3s
-        </h3>
+          <h3 className="text-xs font-semibold text-[var(--muted)]">
+            10 · Identity confirm — type{" "}
+            <code className="font-mono">
+              {expectedOwner || "(repo owner not supplied — Allow is disabled)"}
+            </code>{" "}
+            and hold Allow for 3s
+          </h3>
         <input
           type="text"
           value={typedOwner}

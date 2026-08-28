@@ -152,17 +152,33 @@ function fakeEventsFor(input: StartSessionInput, paused: boolean): LiveEvent[] {
       payload: { threadId: "thr_searcher" },
     }),
   ];
+  // Derive the verifier thread/tool ids from the paper id so a fresh
+  // run never collides with a stale `(thread_id, tool_call_id)` row
+  // left in the gates table by a prior run — the (thread_id,
+  // tool_call_id) unique key would otherwise silently swallow the
+  // insert and the cockpit would never see a gate for the new paper.
+  const verifierThreadId = `thr_verifier_${input.paperId.slice(0, 8)}`;
+  const verifierToolCallId = `tc_${input.paperId.slice(0, 8)}`;
   if (paused) {
     events.push(
       ev({
         id: "e9", createdAt: "2026-08-27T14:00:08.000Z", type: "tool.approval_required",
-        payload: { threadId: "thr_verifier", toolCallId: "tc_1", toolName: "bash" },
+        payload: {
+          threadId: verifierThreadId,
+          toolCallId: verifierToolCallId,
+          toolName: "bash",
+          // Qodo #10 — the upstream supplies the expected repo owner
+          // for the identity confirm. The fake sets it to "tensorflow"
+          // so the VerifyCard starts with Allow disabled (typed match
+          // required) and TC-1 can type it in.
+          repoOwner: "tensorflow",
+        },
       }),
       ev({
         id: "e10", createdAt: "2026-08-27T14:00:09.000Z", type: "turn.done",
         payload: {
           state: "done",
-          requiredActions: [{ type: "tool.approval", toolCallId: "tc_1" }],
+          requiredActions: [{ type: "tool.approval", toolCallId: verifierToolCallId }],
           metrics: { totalTokens: 18402, totalCostInUsd: 0 },
         },
       }),
@@ -182,21 +198,85 @@ function fakeEventsFor(input: StartSessionInput, paused: boolean): LiveEvent[] {
   return events;
 }
 
+// Qodo #5 — the post-resume event sequence. When the user Allows
+// the verify gate, the TrueForge turn is resumed and the agent
+// emits a small "continue" sequence (one model delta + a final
+// turn.done) so the cockpit has something to stream on reload.
+// For Deny, the agent emits a single "skipped" line + turn.done so
+// the cockpit leaves the paused state cleanly.
+function fakeResumeEventsFor(
+  input: StartSessionInput,
+  decision: "allow" | "deny",
+  threadId: string,
+  toolCallId: string,
+): LiveEvent[] {
+  const turnId = `turn_resume_${Math.random().toString(36).slice(2, 8)}`;
+  let seq = 0;
+  const next = () => ++seq;
+  const ev = (e: Omit<LiveEvent, "seq">): LiveEvent => ({ ...e, seq: next() });
+  if (decision === "allow") {
+    return [
+      ev({
+        id: "r1", createdAt: new Date().toISOString(), type: "turn.created",
+        payload: { sessionId: `sess_${input.paperId.slice(0, 8)}`, turnId },
+      }),
+      ev({
+        id: "r2", createdAt: new Date().toISOString(), type: "model.message.delta",
+        payload: { messageId: "m2", threadId, delta: "Resumed after approval. Running tool…\n" },
+      }),
+      ev({
+        id: "r3", createdAt: new Date().toISOString(), type: "turn.done",
+        payload: { state: "done", requiredActions: [], metrics: { totalTokens: 19000, totalCostInUsd: 0 } },
+      }),
+    ];
+  }
+  // Deny / Expire — agent acknowledges the denial and closes the turn.
+  return [
+    ev({
+      id: "r1", createdAt: new Date().toISOString(), type: "turn.created",
+      payload: { sessionId: `sess_${input.paperId.slice(0, 8)}`, turnId },
+    }),
+    ev({
+      id: "r2", createdAt: new Date().toISOString(), type: "model.message.delta",
+      payload: { messageId: "m2", threadId, delta: `User ${decision} on tool call ${toolCallId}; continuing without running.\n` },
+    }),
+    ev({
+      id: "r3", createdAt: new Date().toISOString(), type: "turn.done",
+      payload: { state: "done", requiredActions: [], metrics: { totalTokens: 18500, totalCostInUsd: 0 } },
+    }),
+  ];
+}
+
+// Qodo #5 — the fake remembers the resume decision per (sessionId,
+// toolCallId) so the next createTurnStream call for the resumed
+// turnId emits the post-resume sequence (Qodo #5 — without this the
+// fake loops back to the same paused sequence).
+const resumeMemory: Map<string, { decision: "allow" | "deny"; events: LiveEvent[]; turnId: string }> = new Map();
+
 class FakeTrueForgeClient implements TrueForgeClient {
   async startSession(input: StartSessionInput): Promise<StartSessionResult> {
     const sessionId = `sess_${input.paperId.slice(0, 8)}`;
     const turnId = `turn_${Math.random().toString(36).slice(2, 8)}`;
     return { sessionId, turnId };
   }
-  async createTurnStream(_sessionId: string, _turnId: string): Promise<TurnStream> {
-    // Use paused=true by default; tests that want the done terminal can
-    // override via the live path or by re-implementing this method.
+  async createTurnStream(sessionId: string, turnId: string): Promise<TurnStream> {
+    // If we have a resume stored for THIS turnId, emit the post-resume
+    // sequence (Qodo #5). Otherwise emit the default paused sequence.
+    const key = `${sessionId}:${turnId}`;
+    const resume = resumeMemory.get(key);
+    // Reconstruct the paper id prefix from the session id so the
+    // verifier thread/tool ids are unique per paper. Falls back to
+    // the all-zero id when the sessionId isn't a fake-generated one
+    // (e.g. test doubles with custom sessionIds).
+    const paperPrefix = sessionId.startsWith("sess_") ? sessionId.slice(5) : "00000000";
     const input: StartSessionInput = {
-      paperId: "00000000-0000-0000-0000-000000000000",
+      paperId: `${paperPrefix}-0000-0000-0000-000000000000`,
       mode: "review",
       source: "fixture:demo",
     };
-    const events = fakeEventsFor(input, true);
+    const events = resume
+      ? resume.events
+      : fakeEventsFor(input, true);
     let cancelled = false;
     const iterator: AsyncIterableIterator<LiveEvent> = {
       next: async () => {
@@ -215,11 +295,19 @@ class FakeTrueForgeClient implements TrueForgeClient {
     // no-op
   }
   async resumeTurnWithApproval(input: ResumeTurnInput): Promise<ResumeTurnResult> {
-    // The fake does not stream a resumed turn (the cockpit has already
-    // received the gate's terminal `turn.paused` event). We return a
-    // fresh turnId so the route handler can record a meaningful audit
-    // row and the cockpit's status flips to "running" again.
-    return { turnId: `turn_resume_${Math.random().toString(36).slice(2, 8)}` };
+    // Reconstruct the paper id prefix from the session id so the fake
+    // resume event sequence references the same verifier thread as the
+    // paused sequence it follows up on.
+    const paperPrefix = input.sessionId.startsWith("sess_") ? input.sessionId.slice(5) : "00000000";
+    const startInput: StartSessionInput = {
+      paperId: `${paperPrefix}-0000-0000-0000-000000000000`,
+      mode: "review",
+      source: "fixture:demo",
+    };
+    const turnId = `turn_resume_${Math.random().toString(36).slice(2, 8)}`;
+    const events = fakeResumeEventsFor(startInput, input.decision, input.threadId, input.toolCallId);
+    resumeMemory.set(`${input.sessionId}:${turnId}`, { decision: input.decision, events, turnId });
+    return { turnId };
   }
 }
 

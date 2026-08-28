@@ -20,6 +20,8 @@ import { Claims } from "./tabs/claims";
 import { Reader } from "./reader";
 import { Ask } from "./ask";
 import { VerifyCard } from "./gates/verify-card";
+import { PublishCard } from "./gates/publish-card";
+import { SaveCard } from "./gates/save-card";
 import type { Claim } from "../lib/claims";
 import type { LiveState, TrailPill } from "../lib/event-reducer";
 
@@ -305,8 +307,15 @@ function VerifyGatePanel({
   // fills the placeholder fields from the gate payload when the page
   // hasn't supplied them yet.
   const payload = (gate.payload as Record<string, unknown>) ?? {};
+  // Qodo #10 — repoOwner must come from the wire payload (the
+  // verifier upstream). When it's missing, the card cannot satisfy
+  // the identity confirm: we pass an empty expectedOwner so the
+  // typed-match check never succeeds and the Allow button stays
+  // disabled until the upstream supplies the real owner.
   const expectedOwner =
-    typeof payload.repoOwner === "string" ? payload.repoOwner : "tensorflow";
+    typeof payload.repoOwner === "string" && payload.repoOwner.length > 0
+      ? payload.repoOwner
+      : "";
   const provenance = {
     arxivId: typeof payload.arxivId === "string" ? payload.arxivId : "",
     title,
@@ -314,30 +323,44 @@ function VerifyGatePanel({
     fetchedAt: typeof payload.fetchedAt === "string" ? payload.fetchedAt : new Date().toISOString(),
     sourceUrl: typeof payload.sourceUrl === "string" ? payload.sourceUrl : "",
     sourceSha256: typeof payload.sourceSha256 === "string" ? payload.sourceSha256 : "",
-    repoUrl: typeof payload.repoUrl === "string" ? payload.repoUrl : `https://github.com/${expectedOwner}/${slug}`,
+    repoUrl: typeof payload.repoUrl === "string" ? payload.repoUrl : "",
     repoCommitSha: typeof payload.repoCommitSha === "string" ? payload.repoCommitSha : "0000000",
   };
   const intent = typeof payload.intent === "string" ? payload.intent : "Run the paper's verification command in a disposable sandbox.";
+  // Qodo #11 — read the budget + envelope from the wire payload.
+  // Hardcoded demo values misrepresent the real sandbox; if the
+  // payload doesn't supply a value, render "—" so the operator
+  // sees the spec is not specified rather than trusting fiction.
   const budget = {
-    cpu: "2 vCPU",
-    ram: "4 GB",
-    disk: "20 GB",
-    wallClock: "30 min",
-    networkMode: "egress-allowlist only",
-    egressAllowlist: ["github.com", "pypi.org", "huggingface.co"],
+    cpu: typeof payload.cpu === "string" ? payload.cpu : "—",
+    ram: typeof payload.ram === "string" ? payload.ram : "—",
+    disk: typeof payload.disk === "string" ? payload.disk : "—",
+    wallClock: typeof payload.wallClock === "string" ? payload.wallClock : "—",
+    networkMode: typeof payload.networkMode === "string" ? payload.networkMode : "—",
+    egressAllowlist: Array.isArray(payload.egressAllowlist)
+      ? (payload.egressAllowlist as string[])
+      : [],
   };
   const envelope = {
-    hypervisor: "KVM (microVM)",
-    baseImageDigest: "sha256:1d2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c",
-    seccompProfile: "default",
-    uid: "1000:1000",
-    mounts: "/workspace (tmpfs)",
-    ephemeral: "true — destroyed on exit",
+    hypervisor: typeof payload.hypervisor === "string" ? payload.hypervisor : "—",
+    baseImageDigest: typeof payload.baseImageDigest === "string" ? payload.baseImageDigest : "—",
+    seccompProfile: typeof payload.seccompProfile === "string" ? payload.seccompProfile : "—",
+    uid: typeof payload.uid === "string" ? payload.uid : "—",
+    mounts: typeof payload.mounts === "string" ? payload.mounts : "—",
+    ephemeral: typeof payload.ephemeral === "string" ? payload.ephemeral : "—",
   };
+  // Data scope + persistence are static copy from the spec (the
+  // contract is fixed: the sandbox can never see ~/.ssh, etc.).
+  // But they can be overridden by the payload if the verifier
+  // surfaces a tighter set.
   const dataScope =
-    "Files readable: /workspace, /tmp. Cannot read ~/.ssh, ~/.aws, browser profile, or home directory.";
+    typeof payload.dataScope === "string"
+      ? payload.dataScope
+      : "Files readable: /workspace, /tmp. Cannot read ~/.ssh, ~/.aws, browser profile, or home directory.";
   const persistence =
-    "Nothing survives this run except stdout/stderr log, the workspace tarball, and Postgres rows tagged with run_id.";
+    typeof payload.persistence === "string"
+      ? payload.persistence
+      : "Nothing survives this run except stdout/stderr log, the workspace tarball, and Postgres rows tagged with run_id.";
 
   async function postDecision(decision: "allow" | "deny", reason?: string) {
     if (!gate) return;
@@ -362,17 +385,53 @@ function VerifyGatePanel({
     }
   }
 
+  const gateForCard = {
+    id: String(gate.id),
+    tool_name: String(gate.tool_name),
+    thread_id: String(gate.thread_id),
+    tool_call_id: String(gate.tool_call_id),
+    payload: payload as Record<string, unknown>,
+    status: String(gate.status),
+    expires_at: String(gate.expires_at),
+  };
+  const askReason = (): string | undefined =>
+    typeof window !== "undefined" ? window.prompt("Reason (optional):") ?? undefined : undefined;
+
+  // Qodo #7 — route to the right card by gate.kind. The default is
+  // verify (the only kind emitted today), but publish/save cards
+  // exist and are reachable as soon as a real adapter writes one
+  // with `gateKind: "publish" | "save"` in the event payload.
+  const kind = String(gate.kind ?? "verify");
+  if (kind === "publish") {
+    const beforeNum = Number(payload.beforeClaimed ?? payload.claimedValue ?? 0);
+    const afterNum = Number(payload.afterReproduced ?? payload.reproducedValue ?? 0);
+    return (
+      <PublishCard
+        gate={gateForCard}
+        before={{ label: "Claimed", value: Number.isFinite(beforeNum) ? beforeNum.toFixed(1) : "—" }}
+        after={{ label: "Reproduced", value: Number.isFinite(afterNum) ? afterNum.toFixed(1) : "—" }}
+        exportPath={`/paper/${slug}/export`}
+        onAllow={() => { void postDecision("allow"); }}
+        onDeny={() => { void postDecision("deny", askReason()); }}
+      />
+    );
+  }
+  if (kind === "save") {
+    const annotations = Array.isArray(payload.annotations)
+      ? (payload.annotations as Array<{ id: string; text: string }>)
+      : [];
+    return (
+      <SaveCard
+        gate={gateForCard}
+        annotations={annotations}
+        onAllow={() => { void postDecision("allow"); }}
+        onDeny={() => { void postDecision("deny", askReason()); }}
+      />
+    );
+  }
   return (
     <VerifyCard
-      gate={{
-        id: String(gate.id),
-        tool_name: String(gate.tool_name),
-        thread_id: String(gate.thread_id),
-        tool_call_id: String(gate.tool_call_id),
-        payload: payload as Record<string, unknown>,
-        status: String(gate.status),
-        expires_at: String(gate.expires_at),
-      }}
+      gate={gateForCard}
       expectedOwner={expectedOwner}
       provenance={provenance}
       intent={intent}
@@ -381,10 +440,7 @@ function VerifyGatePanel({
       dataScope={dataScope}
       persistence={persistence}
       onAllow={() => { void postDecision("allow"); }}
-      onDeny={() => {
-        const reason = typeof window !== "undefined" ? window.prompt("Reason (optional):") ?? undefined : undefined;
-        void postDecision("deny", reason);
-      }}
+      onDeny={() => { void postDecision("deny", askReason()); }}
       onEdit={() => { window.location.href = `/paper/${slug}/audit`; }}
       onKillSwitch={() => { void postDecision("deny", "killed by user"); }}
     />

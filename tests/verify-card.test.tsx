@@ -190,6 +190,30 @@ describe("G1 #10 — Identity confirm", () => {
     act(() => { vi.advanceTimersByTime(5000); });
     expect(baseProps.onAllow).not.toHaveBeenCalled();
   });
+
+  it("a parent re-render mid-hold does NOT reset the hold (fires onAllow exactly once)", () => {
+    // Regression: the hold effect used to be keyed on the props object,
+    // so a parent re-render (cockpit heartbeat) reset holdStart and the
+    // hold could never complete — and after completion, another
+    // re-render while still pressed could fire onAllow a second time.
+    const { getByTestId, rerender } = getCard();
+    const allow = getByTestId("verify-allow");
+    fireEvent.input(getByTestId("verify-owner-input"), { target: { value: "tensorflow" } });
+    fireEvent.mouseDown(allow);
+    act(() => { vi.advanceTimersByTime(1000); });
+    // Parent re-renders with a fresh props object (new callbacks).
+    const rerenderedOnAllow = vi.fn();
+    rerender(<VerifyCard {...baseProps} onAllow={rerenderedOnAllow} />);
+    // Only 2.5s of timer runs after the re-render; the hold started at
+    // t=0, so it must fire here. With the old props-keyed effect the
+    // hold would have restarted at the re-render and NOT fired yet.
+    act(() => { vi.advanceTimersByTime(2500); });
+    expect(rerenderedOnAllow).toHaveBeenCalledTimes(1);
+    expect(baseProps.onAllow).not.toHaveBeenCalled();
+    // Still pressed past completion: no double-fire.
+    act(() => { vi.advanceTimersByTime(3000); });
+    expect(rerenderedOnAllow).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("G1 #10 — owner mismatch", () => {
@@ -258,6 +282,43 @@ describe("Verify card expiry", () => {
     act(() => { vi.advanceTimersByTime(3000); });
     expect(getByTestId("verify-expired").textContent).toMatch(
       /approval expired — restart verification/,
+    );
+  });
+
+  it("Qodo #9: countdown at 0 disables Allow even when status is still 'pending'", () => {
+    const props = {
+      ...baseProps,
+      gate: {
+        ...baseProps.gate,
+        status: "pending" as const,
+        expires_at: new Date(Date.now() + 2000).toISOString(),
+      },
+    };
+    const { getByTestId } = render(<VerifyCard {...props} />);
+    // Even though the owner matches, the countdown is the source of truth.
+    fireEvent.input(getByTestId("verify-owner-input"), { target: { value: "tensorflow" } });
+    act(() => { vi.advanceTimersByTime(3000); });
+    expect((getByTestId("verify-allow") as HTMLButtonElement).disabled).toBe(true);
+    expect((getByTestId("verify-deny") as HTMLButtonElement).disabled).toBe(true);
+    expect((getByTestId("verify-kill") as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe("Verify card — Qodo #10: empty expectedOwner", () => {
+  it("disables Allow when the upstream payload omitted repoOwner", () => {
+    const props = { ...baseProps, expectedOwner: "" };
+    const { getByTestId } = render(<VerifyCard {...props} />);
+    // Typing a value can never match an empty expectedOwner, so
+    // Allow stays disabled.
+    fireEvent.input(getByTestId("verify-owner-input"), { target: { value: "anything" } });
+    expect((getByTestId("verify-allow") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("renders the 'owner not supplied' copy in the identity heading", () => {
+    const props = { ...baseProps, expectedOwner: "" };
+    const { getByTestId } = render(<VerifyCard {...props} />);
+    expect(getByTestId("g1-identity").textContent).toMatch(
+      /repo owner not supplied/,
     );
   });
 });

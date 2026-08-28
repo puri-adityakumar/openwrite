@@ -51,8 +51,10 @@ export function PublishCard(props: PublishCardProps) {
   const s = seconds % 60;
   const countdown = `${m}:${s.toString().padStart(2, "0")}`;
   const delta = numDelta(props.before.value, props.after.value);
-  const decided = gate.status !== "pending";
   const expired = gate.status === "expired" || seconds === 0;
+  // Qodo #9 — disable Allow/Deny when the countdown has reached 0
+  // even before the server flips the row.
+  const decided = gate.status !== "pending" || expired;
 
   return (
     <article

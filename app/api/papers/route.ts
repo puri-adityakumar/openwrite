@@ -52,9 +52,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const sourcePdf = body.sourcePdf ?? (!sourceUrl && source ? source : null);
   const title = body.title ?? null;
   // The slug is unique per (sourceUrl|fixture). For Phase 2 we generate a
-  // timestamp suffix so successive starts of the same fixture don't collide.
+  // timestamp + random suffix so successive starts of the same fixture
+  // (and parallel e2e tests starting in the same millisecond) don't
+  // collide on the papers_slug_key unique constraint.
   const baseSlug = slugify(sourceUrl ?? sourcePdf ?? "paper");
-  const slug = `${baseSlug}-${Date.now().toString(36)}`;
+  const slug = `${baseSlug}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
   const inserted = await query<{ id: string }>(
     `INSERT INTO papers (user_id, slug, title, source_url, source_pdf, mode, status)

@@ -20,6 +20,7 @@ import { requireUser } from "../../../../lib/session";
 import {
   decideGate,
   getGateById,
+  expireGateRow,
   ConflictError,
   NotFoundError,
   type GateRow,
@@ -43,18 +44,35 @@ function err(status: number, message: string): NextResponse {
 // exercise the resume-turn shape (no mixing with user.message) without
 // touching the DB or network. Throws ConflictError on replay, NotFoundError
 // on missing gate, Error on shape violations.
+//
+// Reliability contract (Qodo #1): we resume the TrueForge turn FIRST
+// and only commit the decision to the DB on success. A network
+// failure on resume returns 502 with the gate still in 'pending', so
+// the user can retry. A failure on the DB commit after a successful
+// resume is the only path that leaves the system in a slightly
+// inconsistent state — the TrueForge turn will have been resumed
+// without a record; the cockpit's next reload will pick up the
+// resumed turn (the papers.turn_id is updated by the route handler
+// after this function returns).
 export async function applyApproval(input: {
   gate: GateRow;
   sessionId: string;
   decision: "allow" | "deny";
   reason?: string;
 }): Promise<{ gate: GateRow; resumedTurnId: string }> {
-  const decided = await decideGate({ gateId: input.gate.id, decision: input.decision, reason: input.reason });
+  // Qodo #2 — refuse to decide a gate whose TTL has already passed.
+  // The route's expireOverdueGates() is opportunistic; this is a
+  // belt-and-braces check at the point of decision.
+  if (new Date(input.gate.expires_at).getTime() <= Date.now()) {
+    // Mark it expired first (idempotent: decideGate would have
+    // thrown ConflictError on the next call anyway), then surface a
+    // ConflictError so the route returns 409.
+    await expireGateRow(input.gate.id);
+    throw new ConflictError(`gate expired at ${input.gate.expires_at}`);
+  }
+
+  // Resume FIRST so a network failure leaves the gate in 'pending'.
   const client = getTrueForgeClient();
-  // Build the resume input WITHOUT an undefined `reason` key so the
-  // shape sent to the TrueForge client is exactly
-  // { sessionId, threadId, toolCallId, decision, reason? } — never
-  // mixed with a user.message-shaped field.
   const resumeInput: Parameters<TrueForgeClient["resumeTurnWithApproval"]>[0] = {
     sessionId: input.sessionId,
     threadId: input.gate.thread_id,
@@ -63,6 +81,13 @@ export async function applyApproval(input: {
   };
   if (input.reason !== undefined) resumeInput.reason = input.reason;
   const { turnId } = await client.resumeTurnWithApproval(resumeInput);
+
+  // Only NOW commit the decision. If the DB write fails after the
+  // resume, the cockpit's next reload sees the resumed turn (we
+  // update papers.turn_id) and the gate row remains pending — the
+  // next user retry will resume again (idempotent on TrueForge's
+  // side) and finally decide.
+  const decided = await decideGate({ gateId: input.gate.id, decision: input.decision, reason: input.reason });
   return { gate: decided, resumedTurnId: turnId };
 }
 
@@ -115,6 +140,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       decision: body.decision,
       reason: body.reason,
     });
+    // Qodo #4 — the resumed turn becomes the paper's current turn;
+    // the next cockpit reload reattaches the SSE stream to it.
+    // We also flip paper.status back to 'running' so the cockpit
+    // leaves the paused state. A failure here is best-effort — the
+    // resume already happened on TrueForge's side.
+    try {
+      await query(
+        `UPDATE papers SET turn_id = $1, status = 'running', updated_at = now() WHERE id = $2`,
+        [result.resumedTurnId, gate.paper_id],
+      );
+    } catch (e) {
+      console.error("[approve] papers.turn_id update failed:", (e as Error).message);
+    }
     return NextResponse.json({
       ok: true,
       gate: result.gate,

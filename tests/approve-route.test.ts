@@ -1,6 +1,6 @@
 import { describe, it, expect, afterAll } from "vitest";
-import { closePool } from "../lib/db";
-import { insertGate, type GateRow } from "../lib/gates";
+import { closePool, query } from "../lib/db";
+import { insertGate, getGateById, type GateRow } from "../lib/gates";
 import { __setTrueForgeClientForTest, type TrueForgeClient } from "../lib/trueforge";
 
 // Phase 4.1 — approve route tests.
@@ -184,5 +184,106 @@ describe("applyApproval — no mixed input (binding)", () => {
     expect(sent.reason).toBe("user typed reason");
     expect("message" in sent).toBe(false);
     expect("content" in sent).toBe(false);
+  });
+});
+
+describe("applyApproval — reliability (Qodo #1, #2)", () => {
+  it("Qodo #1: resumes the TrueForge turn BEFORE deciding the gate row", async () => {
+    // Spy on the order: record the gate's DB status at the moment
+    // resumeTurnWithApproval fires. If the order is correct, the
+    // status will still be 'pending' inside the resume call (because
+    // decideGate has not yet run); the post-call assertion then
+    // confirms the gate has moved to 'allowed'.
+    const order: { atResume: string | null; atEnd: string | null } = {
+      atResume: null,
+      atEnd: null,
+    };
+    let gateIdForSpy = "";
+    const fake = new (class extends FakeTF {
+      async resumeTurnWithApproval(input: unknown) {
+        const { getGateById } = await import("../lib/gates");
+        const g = await getGateById(gateIdForSpy);
+        order.atResume = g.status;
+        this.lastResume = input;
+        return { turnId: "turn_resume_order" };
+      }
+    })();
+    __setTrueForgeClientForTest(fake);
+    const tc = fresh("reliability1");
+    const gate: GateRow = await insertGate({
+      paperId: PAPER_ID,
+      threadId: "thr_rel1",
+      toolCallId: tc,
+      toolName: "bash",
+      kind: "verify",
+      severity: "irreversible",
+    });
+    gateIdForSpy = gate.id;
+    const { applyApproval } = await import("../app/api/agent/approve/route");
+    await applyApproval({ gate, sessionId: "sess_rel1", decision: "allow" });
+    const after = await getGateById(gate.id);
+    order.atEnd = after.status;
+    // At the moment resume was called, the gate row was still
+    // 'pending' (decideGate had not yet run). By the end, the
+    // gate row is 'allowed' (decideGate ran AFTER the resume).
+    expect(order.atResume).toBe("pending");
+    expect(order.atEnd).toBe("allowed");
+  });
+
+  it("Qodo #1: a resume failure leaves the gate 'pending' (no early consume)", async () => {
+    class FailTF extends FakeTF {
+      async resumeTurnWithApproval() {
+        throw new Error("upstream down");
+      }
+    }
+    const fake = new FailTF();
+    __setTrueForgeClientForTest(fake);
+    const tc = fresh("reliability2");
+    const gate: GateRow = await insertGate({
+      paperId: PAPER_ID,
+      threadId: "thr_rel2",
+      toolCallId: tc,
+      toolName: "bash",
+      kind: "verify",
+      severity: "irreversible",
+    });
+    const { applyApproval } = await import("../app/api/agent/approve/route");
+    await expect(
+      applyApproval({ gate, sessionId: "sess_rel2", decision: "allow" }),
+    ).rejects.toThrow(/upstream down/);
+    // Gate must still be 'pending' so the user can retry.
+    const after = await getGateById(gate.id);
+    expect(after.status).toBe("pending");
+  });
+
+  it("Qodo #2: refuses to decide a gate whose TTL has already passed", async () => {
+    const fake = new FakeTF();
+    __setTrueForgeClientForTest(fake);
+    const tc = fresh("reliability3");
+    const gate: GateRow = await insertGate({
+      paperId: PAPER_ID,
+      threadId: "thr_rel3",
+      toolCallId: tc,
+      toolName: "bash",
+      kind: "verify",
+      severity: "irreversible",
+    });
+    // Backdate expires_at to 1s ago.
+    await query(`UPDATE gates SET expires_at = now() - interval '1 second' WHERE id = $1`, [gate.id]);
+    // Refetch the gate — the in-memory `gate` object still has the
+    // original (not-yet-expired) expires_at; applyApproval's check
+    // reads `input.gate.expires_at`, so we must pass the refetched row.
+    const stale = await getGateById(gate.id);
+    const { applyApproval } = await import("../app/api/agent/approve/route");
+    await expect(
+      applyApproval({ gate: stale, sessionId: "sess_rel3", decision: "allow" }),
+    ).rejects.toThrow(/expired/);
+    // The gate should now be 'expired' (flipped by the belt-and-braces
+    // expireGateRow call inside applyApproval).
+    const after = await getGateById(gate.id);
+    expect(after.status).toBe("expired");
+    // The TrueForge client should NOT have been called — the TTL
+    // guard runs before the resume.
+    expect(fake.lastResume).toBeNull();
   });
 });

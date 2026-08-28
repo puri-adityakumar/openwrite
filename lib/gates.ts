@@ -198,6 +198,40 @@ export async function expireOverdueGates(now: Date = new Date()): Promise<number
   return rowCount ?? 0;
 }
 
+// Idempotent single-row expiry. Used by the approve route as a
+// belt-and-braces guard (Qodo #2) when a decision arrives for a
+// gate whose TTL has passed. Only flips the row when it's still
+// pending AND its expires_at is <= now (otherwise the call is a
+// no-op for a not-yet-stale row).
+export async function expireGateRow(gateId: string, now: Date = new Date()): Promise<boolean> {
+  const { rowCount } = await query(
+    `UPDATE gates
+        SET status = 'expired',
+            decided_at = $1
+      WHERE id = $2
+        AND status = 'pending'
+        AND expires_at <= $1`,
+    [now.toISOString(), gateId],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+// List the gates that were just expired. Used by the snapshot route
+// to call resumeTurnWithApproval(deny) on each so the agent is
+// actually unpaused (Qodo #3 — without the deny, the TrueForge turn
+// stays paused forever).
+export async function listJustExpired(now: Date = new Date()): Promise<GateRow[]> {
+  const { rows } = await query<GateRow>(
+    `SELECT id, paper_id, kind, severity, status, thread_id, tool_call_id,
+            tool_name, payload, expires_at, decided_at, decided_reason, created_at
+       FROM gates
+      WHERE status = 'expired'
+        AND decided_at = $1`,
+    [now.toISOString()],
+  );
+  return rows;
+}
+
 // Compute the seconds remaining until this gate expires. Negative when
 // already overdue (the route uses that signal to flip to expired first).
 export function secondsUntilExpiry(row: GateRow, now: Date = new Date()): number {
