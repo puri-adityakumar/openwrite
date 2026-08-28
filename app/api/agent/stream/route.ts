@@ -33,6 +33,9 @@ import { appendAudit, AuditWriteError } from "../../../../lib/audit";
 import { reduce, initialState, type LiveEvent, type LiveState } from "../../../../lib/event-reducer";
 import { ThreadMap } from "../../../../lib/thread-map";
 import { getTrueForgeClient } from "../../../../lib/trueforge";
+import { insertGate } from "../../../../lib/gates";
+import { enforceCap } from "../../../../lib/cap-server";
+import { registerActiveStream, unregisterActiveStream } from "../../../../lib/stream-registry";
 import { query } from "../../../../lib/db";
 import { requireUser } from "../../../../lib/session";
 
@@ -94,11 +97,13 @@ async function handle(req: NextRequest): Promise<Response> {
   }
 
   // Ownership + session/turn match.
-  const owner = await query<{ session_id: string | null; turn_id: string | null }>(
-    `SELECT session_id, turn_id FROM papers WHERE id = $1 AND user_id = $2 LIMIT 1`,
+  const owner = await query<{ session_id: string | null; turn_id: string | null; halted: boolean }>(
+    `SELECT session_id, turn_id, halted FROM papers WHERE id = $1 AND user_id = $2 LIMIT 1`,
     [paperId, user.sub],
   );
   if (owner.rows.length === 0) return errResponse(404, "paper not found");
+  // Phase 5.1 — a halted run is locked: no stream resurrection.
+  if (owner.rows[0]!.halted) return errResponse(409, "run is halted (locked)");
   if (owner.rows[0]!.session_id !== sessionId || owner.rows[0]!.turn_id !== turnId) {
     return errResponse(403, "session/turn does not match paper");
   }
@@ -143,6 +148,16 @@ export async function buildStream(input: {
   const encoder = new TextEncoder();
   let closed = false;
   let heartbeat: ReturnType<typeof setInterval> | null = null;
+  // Qodo review round 2 — the halt route's Pause must suspend the
+  // live stream for real: this hook is registered in the active-stream
+  // registry so POST /api/agent/halt (action=pause) can tear the
+  // stream down mid-flight. Declared here so both `start` and
+  // `cancel` share it.
+  const streamCancelHook = () => {
+    closed = true;
+    try { turn.cancel(); } catch { /* ignore */ }
+  };
+  registerActiveStream(paperId, streamCancelHook);
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let state = initialState();
@@ -173,6 +188,7 @@ export async function buildStream(input: {
       };
 
       const cleanup = () => {
+        unregisterActiveStream(paperId, streamCancelHook);
         if (closed) {
           if (heartbeat) { clearInterval(heartbeat); heartbeat = null; }
           return;
@@ -190,6 +206,74 @@ export async function buildStream(input: {
             agentInfo: event.payload.agentInfo as { name?: string } | undefined,
             parentThreadId: (event.payload.parent as { threadId?: string } | undefined)?.threadId ?? null,
           });
+        }
+        // Phase 4.1: on every tool.approval_required, persist a `gates`
+        // row keyed by (threadId, toolCallId). The unique key makes the
+        // insert idempotent, so duplicate upstream events don't blow up.
+        // The reducer has already pushed the gate into state.gates by
+        // the time we get here; the DB row is the durable mirror.
+        //
+        // Qodo #6 — the documented TrueForge event shape nests the
+        // toolCallId under `toolCalls[*]`. The in-repo fake uses flat
+        // `toolCallId` / `toolName` for readability; accept both so
+        // the live adapter works without a code change.
+        if (event.type === "tool.approval_required") {
+          const flat = event.payload as Record<string, unknown>;
+          const toolCalls = Array.isArray(flat.toolCalls) ? flat.toolCalls as Array<Record<string, unknown>> : [];
+          const first = toolCalls[0] ?? {};
+          const toolCallId =
+            String(flat.toolCallId ?? first.id ?? first.toolCallId ?? "");
+          const toolName = String(
+            flat.toolName ?? first.name ?? first.toolName ?? "tool",
+          );
+          const threadId = String(flat.threadId ?? "");
+          // Qodo review #6 — an approval event with NO extractable
+          // tool-call id can never be approved (the resume contract
+          // requires one), and inserting it would occupy the
+          // (threadId, '') unique key. Skip the insert; the event
+          // still flows to the audit + cockpit.
+          if (!toolCallId) {
+            console.error(
+              "[stream] tool.approval_required without a tool-call id — skipping gate insert",
+            );
+          } else {
+            try {
+              await insertGate({
+                paperId,
+                threadId,
+                toolCallId,
+                toolName,
+                // Qodo #7 — the kind/severity are not in the wire event.
+                // The default is a verify gate (the only one we ship
+                // today). The live adapter can override by setting
+                // `gateKind` / `gateSeverity` in the payload (this is
+                // an internal extension, not on the TrueForge wire).
+                kind: (typeof flat.gateKind === "string"
+                  ? flat.gateKind
+                  : "verify") as "verify" | "publish" | "save",
+                severity: (typeof flat.gateSeverity === "string"
+                  ? flat.gateSeverity
+                  : "irreversible") as "reversible" | "irreversible",
+                payload: event.payload as Record<string, unknown>,
+              });
+            } catch (e) {
+              // Qodo #8 — gate persistence failure must not be silent.
+              // Log the failure and flip the paper to 'error' so the
+              // cockpit renders a "gate unavailable" badge and the
+              // user is not stranded on a paused run with no Allow/Deny
+              // path. The audit table still records the upstream event
+              // below; this just surfaces the persistence-layer problem.
+              console.error("[stream] insertGate failed:", (e as Error).message);
+              try {
+                await query(
+                  `UPDATE papers SET status = 'error', updated_at = now() WHERE id = $1`,
+                  [paperId],
+                );
+              } catch (e2) {
+                console.error("[stream] papers.status=error update failed:", (e2 as Error).message);
+              }
+            }
+          }
         }
         const roles = threadMap.snapshot();
         const next = reduce(state, event, { roles });
@@ -213,12 +297,33 @@ export async function buildStream(input: {
         sendPreamble();
         startHeartbeat();
         safeEnqueue(sseLine("event", eventWithRoles));
+        // Phase 5.1 — cap guard. Usage arrives with the metrics on
+        // turn.done; when the paper's cap is crossed, enforceCap locks
+        // the run (halt_reason 'cap') and writes the audit row. The
+        // terminal update below skips halted papers, so the hard stop
+        // sticks.
+        if (event.type === "turn.done") {
+          const m = (event.payload.metrics as { totalTokens?: number; totalCostInUsd?: number } | undefined) ?? {};
+          try {
+            const stopped = await enforceCap(paperId, {
+              totalTokens: m.totalTokens ?? 0,
+              totalCostInUsd: m.totalCostInUsd ?? 0,
+            });
+            if (stopped) {
+              safeEnqueue(sseLine("cap.exceeded", { totalTokens: m.totalTokens ?? 0 }));
+            }
+          } catch (e) {
+            console.error("[stream] cap check failed:", (e as Error).message);
+          }
+        }
         const terminal = classifyTerminal(state);
         if (terminal) {
           safeEnqueue(sseLine(terminal, { state: state.status, metrics: state.metrics }));
           try {
+            // Guard: a halted (user-stopped or cap-stopped) paper is
+            // locked — the terminal status must not overwrite it.
             await query(
-              `UPDATE papers SET status = $1, updated_at = now() WHERE id = $2`,
+              `UPDATE papers SET status = $1, updated_at = now() WHERE id = $2 AND NOT halted`,
               [state.status, paperId],
             );
           } catch { /* best-effort; the live stream already closed */ }
@@ -246,6 +351,7 @@ export async function buildStream(input: {
     },
     cancel() {
       closed = true;
+      unregisterActiveStream(paperId, streamCancelHook);
       if (heartbeat) { clearInterval(heartbeat); heartbeat = null; }
       try { turn.cancel(); } catch { /* ignore */ }
     },

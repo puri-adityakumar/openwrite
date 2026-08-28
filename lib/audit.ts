@@ -30,3 +30,29 @@ export async function appendAudit(paperId: string, event: LiveEvent): Promise<vo
     throw new AuditWriteError(e);
   }
 }
+
+// Phase 5 — writer for app-generated audit rows (halt pause/stop, cap
+// exceeded, gate decisions, replay). Same jsonb shape as a LiveEvent so
+// the audit page renders upstream and app rows uniformly. A fresh
+// negative seq keeps these below the reducer's seq cursor — app rows
+// are metadata, never replayed as live events.
+export async function appendAuditEvent(
+  paperId: string,
+  event: { type: string; payload?: Record<string, unknown> },
+): Promise<void> {
+  const row = {
+    id: `app_${event.type}_${Date.now().toString(36)}`,
+    createdAt: new Date().toISOString(),
+    type: event.type,
+    payload: event.payload ?? {},
+    seq: 0,
+  };
+  try {
+    await query(
+      `INSERT INTO audit (paper_id, events) VALUES ($1, $2::jsonb)`,
+      [paperId, JSON.stringify(row)],
+    );
+  } catch (e) {
+    throw new AuditWriteError(e);
+  }
+}

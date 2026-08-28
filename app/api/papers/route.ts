@@ -15,6 +15,9 @@ type CreateBody = {
   sourcePdf?: string;
   title?: string;
   mode?: "learn" | "deep-read" | "review";
+  // Phase 5.1 — optional per-paper budget cap (USD and/or tokens).
+  capUsd?: number;
+  capTokens?: number;
 };
 
 function slugify(input: string): string {
@@ -47,20 +50,28 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!body.source && !body.sourceUrl && !body.sourcePdf) {
     return err(400, "source, sourceUrl, or sourcePdf is required");
   }
+  if (body.capUsd !== undefined && (typeof body.capUsd !== "number" || !Number.isFinite(body.capUsd) || body.capUsd <= 0)) {
+    return err(400, "capUsd must be a positive number");
+  }
+  if (body.capTokens !== undefined && (!Number.isInteger(body.capTokens) || body.capTokens <= 0)) {
+    return err(400, "capTokens must be a positive integer");
+  }
   const source = body.source ?? "";
   const sourceUrl = body.sourceUrl ?? (source.startsWith("http") ? source : null);
   const sourcePdf = body.sourcePdf ?? (!sourceUrl && source ? source : null);
   const title = body.title ?? null;
   // The slug is unique per (sourceUrl|fixture). For Phase 2 we generate a
-  // timestamp suffix so successive starts of the same fixture don't collide.
+  // timestamp + random suffix so successive starts of the same fixture
+  // (and parallel e2e tests starting in the same millisecond) don't
+  // collide on the papers_slug_key unique constraint.
   const baseSlug = slugify(sourceUrl ?? sourcePdf ?? "paper");
-  const slug = `${baseSlug}-${Date.now().toString(36)}`;
+  const slug = `${baseSlug}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
   const inserted = await query<{ id: string }>(
-    `INSERT INTO papers (user_id, slug, title, source_url, source_pdf, mode, status)
-     VALUES ($1, $2, $3, $4, $5, $6, 'queued')
+    `INSERT INTO papers (user_id, slug, title, source_url, source_pdf, mode, status, cap_usd, cap_tokens)
+     VALUES ($1, $2, $3, $4, $5, $6, 'queued', $7, $8)
      RETURNING id`,
-    [user.sub, slug, title, sourceUrl, sourcePdf, body.mode],
+    [user.sub, slug, title, sourceUrl, sourcePdf, body.mode, body.capUsd ?? null, body.capTokens ?? null],
   );
   const paperId = inserted.rows[0]!.id;
   return NextResponse.json({ ok: true, paperId, slug });
@@ -68,8 +79,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
 export async function GET(): Promise<NextResponse> {
   const user = await requireUser();
-  const result = await query<{ id: string; slug: string; title: string | null; status: string; mode: string; created_at: string }>(
-    `SELECT id, slug, title, status, mode, created_at
+  const result = await query<{ id: string; slug: string; title: string | null; status: string; mode: string; halted: boolean; halt_reason: string | null; created_at: string }>(
+    `SELECT id, slug, title, status, mode, halted, halt_reason, created_at
      FROM papers WHERE user_id = $1 ORDER BY created_at DESC`,
     [user.sub],
   );

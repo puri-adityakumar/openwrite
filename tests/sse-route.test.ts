@@ -136,3 +136,64 @@ describe("P7#3 — turn.done with requiredActions emits a turn.paused terminal f
 // Quiet "unused" warnings on the Readable import; node:stream is here as
 // a type anchor for the streaming-layer tests we may add later.
 void Readable;
+
+describe("Qodo review #6 — approval_required with no usable tool-call id", () => {
+  it("does not insert an unapprovable gate row (empty toolCallId)", async () => {
+    const { query, closePool } = await import("../lib/db");
+    const tf = await import("../lib/trueforge");
+    const PID = "00000000-0000-0000-0000-000000000016";
+    await query(
+      `INSERT INTO papers (id, user_id, slug, mode, status, session_id, turn_id)
+       SELECT '00000000-0000-0000-0000-000000000016', id, 'noid-playground', 'review', 'running', 'sess_noid', 'turn_noid'
+       FROM users WHERE email = 'demo@local'
+       ON CONFLICT (id) DO NOTHING`,
+    );
+    await query(`DELETE FROM gates WHERE paper_id = $1`, [PID]);
+
+    class NoIdTF {
+      async startSession() {
+        return { sessionId: "sess_noid", turnId: "turn_noid" };
+      }
+      async createTurnStream() {
+        const at = () => new Date().toISOString();
+        const events = [
+          { id: "n1", createdAt: at(), type: "turn.created", payload: {}, seq: 1 },
+          // The documented live shape nests ids under toolCalls; this
+          // malformed variant has NEITHER the flat fields NOR the
+          // nested array — no approvable identity exists.
+          { id: "n2", createdAt: at(), type: "tool.approval_required", payload: { threadId: "thr_noid" }, seq: 2 },
+          { id: "n3", createdAt: at(), type: "turn.done", payload: { state: "done", requiredActions: [], metrics: {} }, seq: 3 },
+        ];
+        let cancelled = false;
+        const iterator: AsyncIterableIterator<(typeof events)[number]> = {
+          next: async () => {
+            if (cancelled) return { value: undefined, done: true };
+            const v = events.shift();
+            return v ? { value: v, done: false } : { value: undefined, done: true };
+          },
+          return: async () => ({ value: undefined, done: true }),
+          throw: async (e) => { throw e; },
+          [Symbol.asyncIterator]: () => iterator,
+        };
+        return { iterator, cancel: () => { cancelled = true; } };
+      }
+      async cancelSession() {}
+      async resumeTurnWithApproval() {
+        return { turnId: "turn_resume_noid" };
+      }
+    }
+    tf.__setTrueForgeClientForTest(new NoIdTF());
+    const { buildStream } = await import("../app/api/agent/stream/route");
+    const resp = await buildStream({ sessionId: "sess_noid", turnId: "turn_noid", paperId: PID });
+    await new Response(resp.body).text();
+
+    const { rows } = await query<{ id: string }>(`SELECT id FROM gates WHERE paper_id = $1`, [PID]);
+    // A gate row with an empty tool_call_id can never be approved (the
+    // resume contract requires a toolCallId) and would occupy the
+    // (threadId, '') unique key — skip the insert instead.
+    expect(rows).toHaveLength(0);
+    tf.__setTrueForgeClientForTest(null);
+    await query(`DELETE FROM papers WHERE id = $1`, [PID]);
+    await closePool();
+  }, 10_000);
+});

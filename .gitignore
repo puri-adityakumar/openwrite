@@ -26,3 +26,4 @@ tsconfig.tsbuildinfo
 # OS
 .DS_Store
 Thumbs.db
+e2e/.auth/

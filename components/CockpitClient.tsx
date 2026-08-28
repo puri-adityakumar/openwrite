@@ -19,6 +19,11 @@ import { Authors } from "./tabs/authors";
 import { Claims } from "./tabs/claims";
 import { Reader } from "./reader";
 import { Ask } from "./ask";
+import { VerifyCard } from "./gates/verify-card";
+import { PublishCard } from "./gates/publish-card";
+import { SaveCard } from "./gates/save-card";
+import { HaltButton } from "./halt-button";
+import { CapChip } from "./cap-chip";
 import type { Claim } from "../lib/claims";
 import type { LiveState, TrailPill } from "../lib/event-reducer";
 
@@ -65,6 +70,10 @@ export type CockpitClientProps = {
   summary: SummaryData;
   pdfUrl: string | null;
   heartbeatEnabled?: boolean;
+  // Phase 5.1 — halt + cap state from the papers row.
+  halted?: boolean;
+  capUsd?: number | null;
+  capTokens?: number | null;
 };
 
 export function CockpitClient({
@@ -77,6 +86,9 @@ export function CockpitClient({
   summary,
   pdfUrl,
   heartbeatEnabled = true,
+  halted = false,
+  capUsd = null,
+  capTokens = null,
 }: CockpitClientProps) {
   const [tab, setTab] = useState<TabId>("summary");
   const [openClaim, setOpenClaim] = useState<Claim | null>(null);
@@ -112,10 +124,13 @@ export function CockpitClient({
           <p className="text-xs text-[var(--muted)]">{title}</p>
         </div>
         <div className="flex items-center gap-2 text-sm text-[var(--muted)]">
-          <span className="rounded border border-[var(--border)] px-2 py-1" data-testid="halt-btn">⏸ Halt</span>
-          <span className="rounded border border-[var(--border)] px-2 py-1" data-testid="cap-chip">
-            Cap: {liveState.metrics.costDisplay}
-          </span>
+          <HaltButton paperId={paperId} status={liveState.status} halted={halted} />
+          <CapChip
+            capUsd={capUsd}
+            capTokens={capTokens}
+            totalTokens={liveState.metrics.totalTokens}
+            costDisplay={liveState.metrics.costDisplay}
+          />
         </div>
       </div>
       <p className="mt-2 text-sm" data-testid="status-row">
@@ -164,6 +179,24 @@ export function CockpitClient({
           ░ sparse · ▒ light · ▓ medium · █ dense (denser = more cited)
         </p>
       </section>
+
+      {liveState.status === "paused" && (
+        <section className="mt-6" data-testid="gate-panel">
+          <VerifyGatePanel
+            paperId={paperId}
+            slug={slug}
+            title={title}
+            onAllowed={() => {
+              // The card posted allow; flip the cockpit back to running
+              // by waiting for the resumed turn's first event. The
+              // simplest UX is to reload the page so the SSE stream
+              // reattaches and the paper status flips to "running".
+              window.location.reload();
+            }}
+            onDenied={() => { window.location.reload(); }}
+          />
+        </section>
+      )}
 
       <section className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">
@@ -246,3 +279,183 @@ function ClaimsLoader({
   if (claims === null) return <div className="text-sm text-[var(--muted)]">Loading claims…</div>;
   return <Claims claims={claims} onOpenClaim={onOpenClaim} />;
 }
+
+// Phase 4.2 — Verify gate panel. Fetches the paper's most-recent
+// pending gate, composes the G1 props from the paper row + payload,
+// and renders the Verify card. The card calls back to the approve
+// route and triggers a reload on success so the live SSE stream
+// reattaches to the resumed turn.
+function VerifyGatePanel({
+  paperId,
+  slug,
+  title,
+  onAllowed,
+  onDenied,
+}: {
+  paperId: string;
+  slug: string;
+  title: string;
+  onAllowed: () => void;
+  onDenied: () => void;
+}) {
+  const [gate, setGate] = useState<Record<string, unknown> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/papers/${paperId}/gates`)
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return (await r.json()) as { ok: boolean; gate: Record<string, unknown> | null };
+      })
+      .then((d) => { if (!cancelled) setGate(d.gate); })
+      .catch((e: Error) => { if (!cancelled) setError(e.message); });
+    return () => { cancelled = true; };
+  }, [paperId]);
+  if (error) return <div data-testid="gate-error" className="text-sm text-[var(--bad)]">Gate error: {error}</div>;
+  if (gate === null) return <div data-testid="gate-empty" className="text-sm text-[var(--muted)]">No pending gate.</div>;
+  // Derive G1 props from the gate payload + paper metadata. The page
+  // (not this client) owns the full provenance block, so the cockpit
+  // fills the placeholder fields from the gate payload when the page
+  // hasn't supplied them yet.
+  const payload = (gate.payload as Record<string, unknown>) ?? {};
+  // Qodo #10 — repoOwner must come from the wire payload (the
+  // verifier upstream). When it's missing, the card cannot satisfy
+  // the identity confirm: we pass an empty expectedOwner so the
+  // typed-match check never succeeds and the Allow button stays
+  // disabled until the upstream supplies the real owner.
+  const expectedOwner =
+    typeof payload.repoOwner === "string" && payload.repoOwner.length > 0
+      ? payload.repoOwner
+      : "";
+  const provenance = {
+    arxivId: typeof payload.arxivId === "string" ? payload.arxivId : "",
+    title,
+    authors: Array.isArray(payload.authors) ? (payload.authors as string[]) : [],
+    fetchedAt: typeof payload.fetchedAt === "string" ? payload.fetchedAt : new Date().toISOString(),
+    sourceUrl: typeof payload.sourceUrl === "string" ? payload.sourceUrl : "",
+    sourceSha256: typeof payload.sourceSha256 === "string" ? payload.sourceSha256 : "",
+    repoUrl: typeof payload.repoUrl === "string" ? payload.repoUrl : "",
+    repoCommitSha: typeof payload.repoCommitSha === "string" ? payload.repoCommitSha : "0000000",
+  };
+  const intent = typeof payload.intent === "string" ? payload.intent : "Run the paper's verification command in a disposable sandbox.";
+  // Qodo #11 — read the budget + envelope from the wire payload.
+  // Hardcoded demo values misrepresent the real sandbox; if the
+  // payload doesn't supply a value, render "—" so the operator
+  // sees the spec is not specified rather than trusting fiction.
+  const budget = {
+    cpu: typeof payload.cpu === "string" ? payload.cpu : "—",
+    ram: typeof payload.ram === "string" ? payload.ram : "—",
+    disk: typeof payload.disk === "string" ? payload.disk : "—",
+    wallClock: typeof payload.wallClock === "string" ? payload.wallClock : "—",
+    networkMode: typeof payload.networkMode === "string" ? payload.networkMode : "—",
+    egressAllowlist: Array.isArray(payload.egressAllowlist)
+      ? (payload.egressAllowlist as string[])
+      : [],
+  };
+  const envelope = {
+    hypervisor: typeof payload.hypervisor === "string" ? payload.hypervisor : "—",
+    baseImageDigest: typeof payload.baseImageDigest === "string" ? payload.baseImageDigest : "—",
+    seccompProfile: typeof payload.seccompProfile === "string" ? payload.seccompProfile : "—",
+    uid: typeof payload.uid === "string" ? payload.uid : "—",
+    mounts: typeof payload.mounts === "string" ? payload.mounts : "—",
+    ephemeral: typeof payload.ephemeral === "string" ? payload.ephemeral : "—",
+  };
+  // Data scope + persistence are static copy from the spec (the
+  // contract is fixed: the sandbox can never see ~/.ssh, etc.).
+  // But they can be overridden by the payload if the verifier
+  // surfaces a tighter set.
+  const dataScope =
+    typeof payload.dataScope === "string"
+      ? payload.dataScope
+      : "Files readable: /workspace, /tmp. Cannot read ~/.ssh, ~/.aws, browser profile, or home directory.";
+  const persistence =
+    typeof payload.persistence === "string"
+      ? payload.persistence
+      : "Nothing survives this run except stdout/stderr log, the workspace tarball, and Postgres rows tagged with run_id.";
+
+  async function postDecision(decision: "allow" | "deny", reason?: string) {
+    if (!gate) return;
+    const gateId = gate.id;
+    setSubmitting(true);
+    try {
+      const r = await fetch(`/api/agent/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ gateId, decision, reason }),
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        throw new Error(d?.error ?? `HTTP ${r.status}`);
+      }
+      if (decision === "allow") onAllowed();
+      else onDenied();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const gateForCard = {
+    id: String(gate.id),
+    tool_name: String(gate.tool_name),
+    thread_id: String(gate.thread_id),
+    tool_call_id: String(gate.tool_call_id),
+    payload: payload as Record<string, unknown>,
+    status: String(gate.status),
+    expires_at: String(gate.expires_at),
+  };
+  const askReason = (): string | undefined =>
+    typeof window !== "undefined" ? window.prompt("Reason (optional):") ?? undefined : undefined;
+
+  // Qodo #7 — route to the right card by gate.kind. The default is
+  // verify (the only kind emitted today), but publish/save cards
+  // exist and are reachable as soon as a real adapter writes one
+  // with `gateKind: "publish" | "save"` in the event payload.
+  const kind = String(gate.kind ?? "verify");
+  if (kind === "publish") {
+    const beforeNum = Number(payload.beforeClaimed ?? payload.claimedValue ?? 0);
+    const afterNum = Number(payload.afterReproduced ?? payload.reproducedValue ?? 0);
+    return (
+      <PublishCard
+        gate={gateForCard}
+        before={{ label: "Claimed", value: Number.isFinite(beforeNum) ? beforeNum.toFixed(1) : "—" }}
+        after={{ label: "Reproduced", value: Number.isFinite(afterNum) ? afterNum.toFixed(1) : "—" }}
+        exportPath={`/paper/${slug}/export`}
+        onAllow={() => { void postDecision("allow"); }}
+        onDeny={() => { void postDecision("deny", askReason()); }}
+      />
+    );
+  }
+  if (kind === "save") {
+    const annotations = Array.isArray(payload.annotations)
+      ? (payload.annotations as Array<{ id: string; text: string }>)
+      : [];
+    return (
+      <SaveCard
+        gate={gateForCard}
+        annotations={annotations}
+        onAllow={() => { void postDecision("allow"); }}
+        onDeny={() => { void postDecision("deny", askReason()); }}
+      />
+    );
+  }
+  return (
+    <VerifyCard
+      gate={gateForCard}
+      expectedOwner={expectedOwner}
+      provenance={provenance}
+      intent={intent}
+      budget={budget}
+      envelope={envelope}
+      dataScope={dataScope}
+      persistence={persistence}
+      onAllow={() => { void postDecision("allow"); }}
+      onDeny={() => { void postDecision("deny", askReason()); }}
+      onEdit={() => { window.location.href = `/paper/${slug}/audit`; }}
+      onKillSwitch={() => { void postDecision("deny", "killed by user"); }}
+    />
+  );
+}
+

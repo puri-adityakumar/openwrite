@@ -62,19 +62,64 @@ CREATE INDEX IF NOT EXISTS annotations_paper_id_created_at_idx
 -- kind: verify | publish | save
 -- severity: reversible | irreversible
 -- status: pending | allowed | denied | expired
+--
+-- Phase 4.1 added: thread_id + tool_call_id (unique key per the
+-- approval-gates spec), tool_name (Pulse line), expires_at (TTL
+-- countdown), decided_reason (Deny copy). (threadId, toolCallId) is
+-- the natural identity of an approval so a duplicate upstream event
+-- doesn't double-insert.
 CREATE TABLE IF NOT EXISTS gates (
-    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    paper_id    uuid NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
-    kind        text NOT NULL CHECK (kind IN ('verify', 'publish', 'save')),
-    severity    text NOT NULL CHECK (severity IN ('reversible', 'irreversible')),
-    status      text NOT NULL CHECK (status IN ('pending', 'allowed', 'denied', 'expired')),
-    payload     jsonb,
-    decided_at  timestamptz,
-    created_at  timestamptz NOT NULL DEFAULT now()
+    id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    paper_id        uuid NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+    kind            text NOT NULL CHECK (kind IN ('verify', 'publish', 'save')),
+    severity        text NOT NULL CHECK (severity IN ('reversible', 'irreversible')),
+    status          text NOT NULL CHECK (status IN ('pending', 'allowed', 'denied', 'expired')),
+    thread_id       text NOT NULL,
+    tool_call_id    text NOT NULL,
+    tool_name       text NOT NULL,
+    payload         jsonb,
+    expires_at      timestamptz NOT NULL,
+    decided_at      timestamptz,
+    decided_reason  text,
+    created_at      timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (thread_id, tool_call_id)
 );
+
+-- Forward-compat ALTERs for an existing Phase 0/3 gates table that
+-- pre-dates the Phase 4.1 columns. These are no-ops on a fresh DB
+-- (CREATE TABLE above already has them).
+ALTER TABLE gates ADD COLUMN IF NOT EXISTS thread_id       text;
+ALTER TABLE gates ADD COLUMN IF NOT EXISTS tool_call_id    text;
+ALTER TABLE gates ADD COLUMN IF NOT EXISTS tool_name       text;
+ALTER TABLE gates ADD COLUMN IF NOT EXISTS expires_at      timestamptz;
+ALTER TABLE gates ADD COLUMN IF NOT EXISTS decided_reason  text;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints
+                 WHERE table_name = 'gates' AND constraint_name = 'gates_thread_id_tool_call_id_key') THEN
+    -- Backfill thread_id/tool_call_id for any legacy rows that pre-date
+    -- Phase 4.1 (Phase 0 scaffold left no rows; this is a defensive
+    -- backstop in case a partial Phase 4 migration ran before the
+    -- columns were added).
+    UPDATE gates
+       SET thread_id    = COALESCE(thread_id, 'legacy:' || id::text),
+           tool_call_id = COALESCE(tool_call_id, 'legacy:' || id::text),
+           tool_name    = COALESCE(tool_name, 'legacy'),
+           expires_at   = COALESCE(expires_at, created_at + interval '5 minutes')
+     WHERE thread_id IS NULL OR tool_call_id IS NULL OR tool_name IS NULL OR expires_at IS NULL;
+    ALTER TABLE gates ALTER COLUMN thread_id    SET NOT NULL;
+    ALTER TABLE gates ALTER COLUMN tool_call_id SET NOT NULL;
+    ALTER TABLE gates ALTER COLUMN tool_name    SET NOT NULL;
+    ALTER TABLE gates ALTER COLUMN expires_at   SET NOT NULL;
+    ALTER TABLE gates ADD CONSTRAINT gates_thread_id_tool_call_id_key UNIQUE (thread_id, tool_call_id);
+  END IF;
+END$$;
 
 CREATE INDEX IF NOT EXISTS gates_paper_id_created_at_idx
     ON gates(paper_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS gates_status_expires_at_idx
+    ON gates(status, expires_at) WHERE status = 'pending';
 
 -- 5b. claims (Phase 3) -------------------------------------------------
 -- Per-claim rows: text, evidence quote, confidence, anchor (page),
@@ -121,3 +166,16 @@ BEGIN
     END IF;
 END
 $$;
+
+-- 7. Phase 5 — halt 2-state + cap guard -----------------------------------
+-- halted: set by POST /api/agent/halt action=stop (user) or the cap
+-- hard-stop (halt_reason='cap'). A halted run is locked: the stream
+-- terminal update and further halt actions must not overwrite it.
+-- halt_reason: 'user' | 'cap'.
+-- cap_usd / cap_tokens: per-paper budget guard (nullable = no cap).
+-- The cost cap governs when the provider reports a real cost; the
+-- token cap governs the custom provider (total_cost_in_usd === 0).
+ALTER TABLE papers ADD COLUMN IF NOT EXISTS halted boolean NOT NULL DEFAULT false;
+ALTER TABLE papers ADD COLUMN IF NOT EXISTS halt_reason text;
+ALTER TABLE papers ADD COLUMN IF NOT EXISTS cap_usd numeric;
+ALTER TABLE papers ADD COLUMN IF NOT EXISTS cap_tokens integer;

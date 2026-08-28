@@ -14,12 +14,18 @@ export function LiveCockpit({
   paperId,
   streamUrl,
   pdfUrl,
+  halted = false,
+  capUsd = null,
+  capTokens = null,
 }: {
   slug: string;
   title: string;
   paperId: string;
   streamUrl: string;
   pdfUrl: string | null;
+  halted?: boolean;
+  capUsd?: number | null;
+  capTokens?: number | null;
 }) {
   const { state, pills } = useCockpitState(streamUrl);
   return (
@@ -41,6 +47,9 @@ export function LiveCockpit({
         evidence_count: 0,
       }}
       pdfUrl={pdfUrl}
+      halted={halted}
+      capUsd={capUsd}
+      capTokens={capTokens}
     />
   );
 }
