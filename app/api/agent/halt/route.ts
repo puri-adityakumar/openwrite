@@ -15,9 +15,22 @@ import { query } from "../../../../lib/db";
 import { requireUser } from "../../../../lib/session";
 import { appendAuditEvent } from "../../../../lib/audit";
 import { getTrueForgeClient } from "../../../../lib/trueforge";
+import { cancelActiveStream } from "../../../../lib/stream-registry";
 import { NotFoundError, ConflictError } from "../../../../lib/gates";
 
 export { NotFoundError, ConflictError };
+
+// Qodo review round 2 — a stop whose TrueForge cancellation failed
+// must NOT lock the paper (the upstream run would keep going with
+// every retry rejected as already-halted). Surfaced as 502 so the
+// user can retry Stop once the upstream is reachable again.
+export class UpstreamError extends Error {
+  status = 502 as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "UpstreamError";
+  }
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,6 +61,10 @@ export async function applyHalt(input: {
     if (paper.status !== "running" && paper.status !== "queued") {
       throw new ConflictError(`cannot pause a ${paper.status} run`);
     }
+    // Suspend execution for real (Qodo review round 2): cancel the
+    // open SSE stream so no further events flow and no terminal
+    // update can overwrite the paused status.
+    cancelActiveStream(input.paperId);
     await query(
       `UPDATE papers SET status = 'paused', updated_at = now() WHERE id = $1`,
       [input.paperId],
@@ -56,9 +73,17 @@ export async function applyHalt(input: {
     return { status: "paused", halted: false };
   }
 
-  // stop — terminates and locks. Works from any non-halted state so
-  // the Pause → Stop cycle (and an emergency stop mid-run) always land.
+  // stop — cancel the upstream turn BEFORE locking (Qodo review round
+  // 2): a failed cancellation must be retryable, so on failure we
+  // return 502 WITHOUT locking. The fake adapter no-ops here.
   const reason = input.reason ?? "user";
+  if (paper.session_id) {
+    try {
+      await getTrueForgeClient().cancelSession(paper.session_id);
+    } catch (e) {
+      throw new UpstreamError(`TrueForge cancelSession failed: ${(e as Error).message}`);
+    }
+  }
   await query(
     `UPDATE papers SET status = 'done', halted = true, halt_reason = $2, updated_at = now() WHERE id = $1`,
     [input.paperId, reason],
@@ -67,15 +92,6 @@ export async function applyHalt(input: {
     type: "halt.stop",
     payload: { action: "stop", reason },
   });
-  // Terminate the TrueForge session (best-effort; the run is already
-  // locked DB-side). The fake adapter no-ops here.
-  if (paper.session_id) {
-    try {
-      await getTrueForgeClient().cancelSession(paper.session_id);
-    } catch (e) {
-      console.error("[halt] cancelSession failed:", (e as Error).message);
-    }
-  }
   return { status: "done", halted: true };
 }
 
@@ -110,6 +126,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const out = await applyHalt({ paperId: body.paperId, action: body.action });
     return NextResponse.json({ ok: true, ...out });
   } catch (e) {
+    if (e instanceof UpstreamError) return err(502, e.message);
     if (e instanceof ConflictError) return err(409, e.message);
     if (e instanceof NotFoundError) return err(404, e.message);
     throw e;

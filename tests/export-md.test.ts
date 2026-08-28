@@ -77,3 +77,12 @@ describe("exportLocked — the publish-gate lock", () => {
     expect(exportLocked([{ kind: "verify", status: "pending" }])).toBe(false);
   });
 });
+
+describe("exportLocked — expired publish gate (Qodo review round 2)", () => {
+  it("an expired publish gate does NOT unlock the export", async () => {
+    const { exportLocked } = await import("../lib/export-md");
+    // Waiting out the TTL must not be a bypass: only an explicit
+    // Allow unlocks the download.
+    expect(exportLocked([{ kind: "publish", status: "expired" }])).toBe(true);
+  });
+});

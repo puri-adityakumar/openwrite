@@ -8,7 +8,9 @@ import { capExceeded, type Cap, type CapUsage } from "./cap";
 
 // Stream-side hard stop: when the usage exceeds the paper's cap, flip
 // the run to done + halted with halt_reason 'cap' and write the audit
-// row. Idempotent via the NOT halted guard. Returns whether it stopped.
+// row. The audit event fires only when THIS invocation's guarded
+// UPDATE matched a row (Qodo review round 2 — racing checks on an
+// already-halted paper must not emit duplicate cap.exceeded events).
 export async function enforceCap(paperId: string, usage: CapUsage): Promise<boolean> {
   const row = await query<{ cap_usd: string | number | null; cap_tokens: number | null; halted: boolean }>(
     `SELECT cap_usd, cap_tokens, halted FROM papers WHERE id = $1 LIMIT 1`,
@@ -21,11 +23,13 @@ export async function enforceCap(paperId: string, usage: CapUsage): Promise<bool
     capTokens: p.cap_tokens,
   };
   if (!capExceeded(cap, usage)) return false;
-  await query(
+  const updated = await query<{ id: string }>(
     `UPDATE papers SET status = 'done', halted = true, halt_reason = 'cap', updated_at = now()
-     WHERE id = $1 AND NOT halted`,
+      WHERE id = $1 AND NOT halted
+      RETURNING id`,
     [paperId],
   );
+  if (updated.rows.length === 0) return false; // lost the race — the halt already landed
   await appendAuditEvent(paperId, {
     type: "cap.exceeded",
     payload: {

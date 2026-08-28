@@ -172,3 +172,40 @@ describe("applyHalt — stop", () => {
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 });
+
+describe("applyHalt — upstream coordination (Qodo review round 2)", () => {
+  it("pause cancels the paper's active live stream (registry)", async () => {
+    const fake = new FakeTF();
+    __setTrueForgeClientForTest(fake);
+    const registry = await import("../lib/stream-registry");
+    let streamCancelled = false;
+    const cancelHook = () => { streamCancelled = true; };
+    registry.registerActiveStream(PAPER_ID, cancelHook);
+    try {
+      const { applyHalt } = await import("../app/api/agent/halt/route");
+      await applyHalt({ paperId: PAPER_ID, action: "pause" });
+      // The advertised Pause actually suspends execution: the open
+      // SSE stream for this paper is cancelled, so no further events
+      // flow and no terminal update can overwrite the paused status.
+      expect(streamCancelled).toBe(true);
+    } finally {
+      registry.unregisterActiveStream(PAPER_ID, cancelHook);
+    }
+  });
+
+  it("stop cancels TrueForge BEFORE locking — a failed cancel is retryable (502, not locked)", async () => {
+    class FailingCancelTF extends FakeTF {
+      async cancelSession() {
+        throw new Error("trueforge unreachable");
+      }
+    }
+    __setTrueForgeClientForTest(new FailingCancelTF());
+    const { applyHalt, UpstreamError } = await import("../app/api/agent/halt/route");
+    await expect(applyHalt({ paperId: PAPER_ID, action: "stop" })).rejects.toBeInstanceOf(UpstreamError);
+    // Not locked: the user can retry Stop once TrueForge is reachable.
+    const s = await haltStates();
+    expect(s.halted).toBe(false);
+    const rows = await haltAuditRows();
+    expect(rows).toHaveLength(0);
+  });
+});

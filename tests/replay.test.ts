@@ -35,6 +35,7 @@ async function resetPaper(opts: { status?: string; halted?: boolean } = {}) {
     [PID, opts.status ?? "done", opts.halted ?? false],
   );
   await query(`DELETE FROM audit WHERE paper_id = $1`, [PID]);
+  await query(`DELETE FROM gates WHERE paper_id = $1`, [PID]);
   // The original run's audit: session start + its sandbox.
   await query(
     `INSERT INTO audit (paper_id, events) VALUES ($1, $2::jsonb), ($1, $3::jsonb)`,
@@ -181,5 +182,47 @@ describe("fake adapter — per-session sandbox freshness", () => {
       }
     };
     expect(await sandboxOf(a)).toBe(await sandboxOf(b));
+  });
+});
+
+describe("replayPaper — pending-gate supersession (Qodo review round 2)", () => {
+  it("supersedes a pending gate on replay (expired with reason) instead of carrying it across", async () => {
+    await resetPaper({ status: "paused" });
+    const thrId = `thr_old_${Math.random().toString(36).slice(2, 8)}`;
+    const tcId = `tc_old_${Math.random().toString(36).slice(2, 8)}`;
+    await query(
+      `INSERT INTO gates (paper_id, kind, severity, status, payload, thread_id, tool_call_id, tool_name, expires_at)
+       VALUES ($1, 'verify', 'irreversible', 'pending', '{}'::jsonb, $2, $3, 'bash', now() + interval '5 minutes')`,
+      [PID, thrId, tcId],
+    );
+    const { replayPaper } = await import("../lib/replay");
+    // Replay stays available from the paused state (the audit page's
+    // "Replay this audit" IS the restart path) — but the old gate is
+    // superseded so it can never resume against the NEW session.
+    const out = await replayPaper(PID);
+    expect(out.sessionId).not.toBe("sess_orig");
+    const gate = await query<{ status: string; decided_reason: string | null }>(
+      `SELECT status, decided_reason FROM gates WHERE thread_id = $1 AND tool_call_id = $2`,
+      [thrId, tcId],
+    );
+    expect(gate.rows[0]).toMatchObject({ status: "expired", decided_reason: "superseded by replay" });
+    // And the new run's paper row is running on the new session.
+    const row = await query<{ status: string; session_id: string }>(
+      `SELECT status, session_id FROM papers WHERE id = $1`,
+      [PID],
+    );
+    expect(row.rows[0]).toMatchObject({ status: "running", session_id: out.sessionId });
+  });
+
+  it("replays fine once the gate is decided (no pending gates left)", async () => {
+    await resetPaper({ status: "paused" });
+    await query(
+      `INSERT INTO gates (paper_id, kind, severity, status, payload, thread_id, tool_call_id, tool_name, expires_at, decided_at, decided_reason)
+       VALUES ($1, 'verify', 'irreversible', 'denied', '{}'::jsonb, $2, $3, 'bash', now() + interval '5 minutes', now(), 'nope')`,
+      [PID, `thr_dec_${Math.random().toString(36).slice(2, 8)}`, `tc_dec_${Math.random().toString(36).slice(2, 8)}`],
+    );
+    const { replayPaper } = await import("../lib/replay");
+    const out = await replayPaper(PID);
+    expect(out.sessionId).not.toBe("sess_orig");
   });
 });

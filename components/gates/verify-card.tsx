@@ -122,6 +122,16 @@ export function VerifyCard(props: VerifyCardProps) {
     }
     holdStart.current = Date.now();
     const id = setInterval(() => {
+      // Qodo review #9 — a hold in progress must not fire past the
+      // TTL: if the countdown reaches zero mid-hold, cancel it (the
+      // server rejects stale approvals atomically as well).
+      if (Date.now() >= new Date(props.gate.expires_at).getTime()) {
+        clearInterval(id);
+        holdTimer.current = null;
+        setHolding(false);
+        setHoldProgress(0);
+        return;
+      }
       const elapsed = Date.now() - (holdStart.current ?? Date.now());
       const pct = Math.min(100, (elapsed / HOLD_FOR_MS) * 100);
       setHoldProgress(pct);

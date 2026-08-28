@@ -35,6 +35,7 @@ import { ThreadMap } from "../../../../lib/thread-map";
 import { getTrueForgeClient } from "../../../../lib/trueforge";
 import { insertGate } from "../../../../lib/gates";
 import { enforceCap } from "../../../../lib/cap-server";
+import { registerActiveStream, unregisterActiveStream } from "../../../../lib/stream-registry";
 import { query } from "../../../../lib/db";
 import { requireUser } from "../../../../lib/session";
 
@@ -147,6 +148,16 @@ export async function buildStream(input: {
   const encoder = new TextEncoder();
   let closed = false;
   let heartbeat: ReturnType<typeof setInterval> | null = null;
+  // Qodo review round 2 — the halt route's Pause must suspend the
+  // live stream for real: this hook is registered in the active-stream
+  // registry so POST /api/agent/halt (action=pause) can tear the
+  // stream down mid-flight. Declared here so both `start` and
+  // `cancel` share it.
+  const streamCancelHook = () => {
+    closed = true;
+    try { turn.cancel(); } catch { /* ignore */ }
+  };
+  registerActiveStream(paperId, streamCancelHook);
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let state = initialState();
@@ -177,6 +188,7 @@ export async function buildStream(input: {
       };
 
       const cleanup = () => {
+        unregisterActiveStream(paperId, streamCancelHook);
         if (closed) {
           if (heartbeat) { clearInterval(heartbeat); heartbeat = null; }
           return;
@@ -339,6 +351,7 @@ export async function buildStream(input: {
     },
     cancel() {
       closed = true;
+      unregisterActiveStream(paperId, streamCancelHook);
       if (heartbeat) { clearInterval(heartbeat); heartbeat = null; }
       try { turn.cancel(); } catch { /* ignore */ }
     },

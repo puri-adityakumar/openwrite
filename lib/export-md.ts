@@ -32,14 +32,15 @@ export function reproductionDeltaLine(publish: ExportPublish): string {
   return `Reproduced ${publish.afterReproduced}% (claimed ${publish.beforeClaimed}%, Δ ${sign}${Math.abs(delta).toFixed(1)})`;
 }
 
-// Phase 5.4 — the Review-mode export lock: while a publish gate is
-// pending or denied, the download stays locked (the review draft is
-// not approved for release). No publish gate ever created (the seed
-// paper) or an allowed gate unlocks it.
+// Phase 5.4 — the Review-mode export lock: the download unlocks only
+// via an explicit Allow on the publish gate. ANY publish gate that is
+// not 'allowed' (pending, denied, or expired — Qodo review round 2:
+// waiting out the TTL must not bypass the gate) keeps it locked. No
+// publish gate ever created (the seed paper) unlocks it.
 export function exportLocked(
   gates: Array<{ kind: string; status: string }>,
 ): boolean {
-  return gates.some((g) => g.kind === "publish" && (g.status === "pending" || g.status === "denied"));
+  return gates.some((g) => g.kind === "publish" && g.status !== "allowed");
 }
 
 export function assembleMarkdown(input: ExportInput): string {

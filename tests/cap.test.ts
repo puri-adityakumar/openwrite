@@ -147,3 +147,44 @@ afterAll(async () => {
   await query(`DELETE FROM papers WHERE id IN ('00000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000013')`);
   await closePool();
 });
+
+describe("enforceCap — duplicate-event guard (Qodo review round 2)", () => {
+  // Own fixture id (…013 belongs to the enforceCap describe above).
+  const PAPER_ID = "00000000-0000-0000-0000-000000000017";
+  beforeAll(async () => {
+    await query(
+      `INSERT INTO papers (id, user_id, slug, mode, status)
+       SELECT '00000000-0000-0000-0000-000000000017', id, 'cap-dup-playground', 'review', 'running'
+       FROM users WHERE email = 'demo@local'
+       ON CONFLICT (id) DO NOTHING`,
+    );
+  });
+  afterAll(async () => {
+    // Cascade-deletes the fixture's audit rows too.
+    await query(`DELETE FROM papers WHERE id = $1`, [PAPER_ID]);
+  });
+  it("a second call for an already-halted paper emits no duplicate audit row", async () => {
+    const { enforceCap } = await import("../lib/cap-server");
+    await query(
+      `UPDATE papers SET status = 'running', halted = false, halt_reason = NULL, cap_tokens = 10000 WHERE id = $1`,
+      [PAPER_ID],
+    );
+    const first = await enforceCap(PAPER_ID, { totalTokens: 18_402, totalCostInUsd: 0 });
+    expect(first).toBe(true);
+    // Even if a racing invocation checks the cap before the halt
+    // lands, its UPDATE matches zero rows — no second event may fire.
+    const second = await enforceCap(PAPER_ID, { totalTokens: 18_402, totalCostInUsd: 0 });
+    expect(second).toBe(false);
+    const rows = await query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM audit
+       WHERE paper_id = $1 AND events->>'type' = 'cap.exceeded'`,
+      [PAPER_ID],
+    );
+    expect(rows.rows[0]!.n).toBe("1");
+    await query(
+      `UPDATE papers SET halted = false, halt_reason = NULL, status = 'running', cap_tokens = NULL WHERE id = $1`,
+      [PAPER_ID],
+    );
+    await query(`DELETE FROM audit WHERE paper_id = $1 AND events->>'type' = 'cap.exceeded'`, [PAPER_ID]);
+  });
+});

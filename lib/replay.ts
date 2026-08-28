@@ -18,14 +18,46 @@ import { NotFoundError, ConflictError } from "./gates";
 export { NotFoundError, ConflictError };
 
 export async function replayPaper(paperId: string): Promise<{ sessionId: string; turnId: string }> {
-  const row = await query<{ status: string; mode: string; source_url: string | null; source_pdf: string | null }>(
-    `SELECT status, mode, source_url, source_pdf FROM papers WHERE id = $1 LIMIT 1`,
+  const row = await query<{ status: string; mode: string; source_url: string | null; source_pdf: string | null; session_id: string | null }>(
+    `SELECT status, mode, source_url, source_pdf, session_id FROM papers WHERE id = $1 LIMIT 1`,
     [paperId],
   );
   const paper = row.rows[0];
   if (!paper) throw new NotFoundError("paper not found");
   // A live turn owns its session; replaying mid-run would orphan it.
   if (paper.status === "running") throw new ConflictError("a run is live — halt or wait before replaying");
+  // Qodo review round 2 — a paper paused on a PENDING gate must not
+  // carry that gate into the new session: a later decision on it
+  // would resume the OLD thread/tool ids against the paper's NEW
+  // session (wrong-session resume). Replay SUPERSEDES pending gates —
+  // expired with a recorded reason and denied upstream so the paused
+  // turn unblocks — which keeps "Replay this audit" working from the
+  // paused state without stranding a stale gate.
+  const superseded = await query<{ id: string; thread_id: string; tool_call_id: string }>(
+    `UPDATE gates
+        SET status = 'expired', decided_at = now(), decided_reason = 'superseded by replay'
+      WHERE paper_id = $1 AND status = 'pending'
+      RETURNING id, thread_id, tool_call_id`,
+    [paperId],
+  );
+  if (superseded.rows.length > 0 && paper.session_id) {
+    const client = getTrueForgeClient();
+    for (const gate of superseded.rows) {
+      try {
+        await client.resumeTurnWithApproval({
+          sessionId: paper.session_id,
+          threadId: gate.thread_id,
+          toolCallId: gate.tool_call_id,
+          decision: "deny",
+          reason: "superseded by replay",
+        });
+      } catch (e) {
+        // Best-effort: the gate row is already terminal; the audit
+        // records the supersession via the replay.started row below.
+        console.error("[replay] superseded-gate deny resume failed:", (e as Error).message);
+      }
+    }
+  }
 
   // P9: the seed never references a live arXiv ID — replay works
   // offline on the stored source (URL for live papers, the fixture

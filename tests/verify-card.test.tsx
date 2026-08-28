@@ -191,6 +191,26 @@ describe("G1 #10 — Identity confirm", () => {
     expect(baseProps.onAllow).not.toHaveBeenCalled();
   });
 
+  it("a hold in progress is cancelled when the TTL hits zero (Qodo review #9)", () => {
+    // The gate expires 1.5s into the hold: finishing the hold after
+    // expiry must NOT fire onAllow (the server now rejects it too —
+    // this pins the client-side cancellation).
+    const { getByTestId } = render(
+      <VerifyCard
+        {...baseProps}
+        gate={{ ...baseProps.gate, expires_at: new Date(Date.now() + 1500).toISOString() }}
+      />,
+    );
+    const allow = getByTestId("verify-allow");
+    fireEvent.input(getByTestId("verify-owner-input"), { target: { value: "tensorflow" } });
+    expect((allow as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.mouseDown(allow);
+    act(() => { vi.advanceTimersByTime(3_000); });
+    expect(baseProps.onAllow).not.toHaveBeenCalled();
+    act(() => { vi.advanceTimersByTime(5_000); });
+    expect(baseProps.onAllow).not.toHaveBeenCalled();
+  });
+
   it("a parent re-render mid-hold does NOT reset the hold (fires onAllow exactly once)", () => {
     // Regression: the hold effect used to be keyed on the props object,
     // so a parent re-render (cockpit heartbeat) reset holdStart and the
