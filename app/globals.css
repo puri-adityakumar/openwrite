@@ -467,3 +467,45 @@ main { animation: rcp-fade-in 0.3s var(--ease-out) both; }
 @media (prefers-reduced-motion: reduce) {
   .g1-section > summary::before { transition: none; }
 }
+
+/* ============================================================
+   Pulse — typed role chip + line-enter animation
+   The chip replaces the leading [role] tag with a colored badge;
+   the line-enter animation fades new lines in from above.
+   ============================================================ */
+@keyframes pulse-line-enter {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.pulse-line-enter {
+  animation: pulse-line-enter 200ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pulse-line-enter { animation: none; }
+}
+.pulse-role {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0 0.375rem;
+  border-radius: var(--radius-sm);
+  margin-right: 0.5rem;
+  border: 1px solid currentColor;
+  vertical-align: 1px;
+}
+.pulse-role[data-role="agent"]    { color: var(--accent-blue); background: hsl(220 80% 60% / 0.08); }
+.pulse-role[data-role="reader"]   { color: var(--color-foreground); background: var(--color-secondary); }
+.pulse-role[data-role="searcher"] { color: var(--accent-blue); background: hsl(220 80% 60% / 0.08); }
+.pulse-role[data-role="verifier"] { color: var(--good); background: hsl(150 70% 45% / 0.10); }
+.pulse-role[data-role="extractor"]{ color: var(--warn); background: hsl(38 92% 60% / 0.12); }
+.pulse-role[data-role="tool"]     { color: var(--color-muted-foreground); background: var(--color-secondary); }
+.pulse-role[data-role="gate"]     { color: var(--color-destructive); background: hsl(0 84% 60% / 0.10); }
+.pulse-role[data-role="sandbox"]  { color: var(--warn); background: hsl(38 92% 60% / 0.12); }
+.pulse-role[data-role="mcp"]      { color: var(--color-foreground); background: var(--color-secondary); }
+:root[data-theme="dark"] .pulse-role[data-role="agent"]    { background: hsl(220 80% 65% / 0.14); }
+:root[data-theme="dark"] .pulse-role[data-role="verifier"] { background: hsl(150 70% 50% / 0.14); }
+:root[data-theme="dark"] .pulse-role[data-role="extractor"]{ background: hsl(38 92% 60% / 0.18); }
+:root[data-theme="dark"] .pulse-role[data-role="gate"]     { background: hsl(0 62.8% 30.6% / 0.20); }
+:root[data-theme="dark"] .pulse-role[data-role="sandbox"]  { background: hsl(38 92% 60% / 0.18); }
