@@ -509,3 +509,66 @@ main { animation: rcp-fade-in 0.3s var(--ease-out) both; }
 :root[data-theme="dark"] .pulse-role[data-role="extractor"]{ background: hsl(38 92% 60% / 0.18); }
 :root[data-theme="dark"] .pulse-role[data-role="gate"]     { background: hsl(0 62.8% 30.6% / 0.20); }
 :root[data-theme="dark"] .pulse-role[data-role="sandbox"]  { background: hsl(38 92% 60% / 0.18); }
+
+/* ============================================================
+   Dashboard empty state — illustrated card
+   A 3-step pipeline (Source → Audit → Verify) explains the
+   agent's posture before the first paper is dropped. Each step
+   uses a thin bordered tile; the connecting arrow lives in a
+   small inline SVG at the top of the card.
+   ============================================================ */
+.empty-hero {
+  max-width: 56rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+.empty-hero-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-secondary);
+  color: var(--accent-blue);
+  margin-bottom: 1rem;
+}
+.empty-pipeline {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+@media (max-width: 640px) {
+  .empty-pipeline { grid-template-columns: 1fr; }
+}
+.empty-step {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.875rem 1rem;
+  text-align: left;
+  background: var(--color-card);
+}
+.empty-step-label {
+  display: inline-block;
+  font-family: var(--font-heading);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground);
+  margin-bottom: 0.25rem;
+}
+.empty-step-title {
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-foreground);
+  margin-bottom: 0.125rem;
+}
+.empty-step-body {
+  font-size: 0.8125rem;
+  color: var(--color-muted-foreground);
+  line-height: 1.5;
+}

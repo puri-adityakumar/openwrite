@@ -92,14 +92,52 @@ export default async function DashboardPage() {
       )}
 
       {papers.length === 0 && (
-        <div className="mt-10 card text-center py-12">
-          <h2 className="text-xl">No papers yet</h2>
-          <p className="mt-2">
-            Drop a PDF path or an arXiv URL and Openwrite will spin up the full
-            source → parse → extract → score → verify → publish pipeline.
+        <div className="mt-10 card text-center py-10 empty-hero" data-testid="dashboard-empty">
+          <span className="empty-hero-mark" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="2"  y="3"  width="18" height="4" rx="1" stroke="currentColor" strokeWidth="1.5" />
+              <rect x="2"  y="9"  width="18" height="4" rx="1" stroke="currentColor" strokeWidth="1.5" />
+              <rect x="2"  y="15" width="18" height="4" rx="1" stroke="currentColor" strokeWidth="1.5" />
+            </svg>
+          </span>
+          <h2 className="text-2xl md:text-3xl">
+            Read papers with an agent that stops
+            <br className="hidden md:inline" /> before doing anything irreversible.
+          </h2>
+          <p className="mt-3 text-sm">
+            Three small checkpoints turn a paper PDF into a clean, citable summary —
+            with you holding the only key that ever runs a tool.
           </p>
-          <div className="mt-6">
-            <Link href="/paper/new" className="btn btn-primary">Drop your first paper</Link>
+          <div className="empty-pipeline" data-testid="dashboard-empty-pipeline">
+            <div className="empty-step" data-testid="dashboard-empty-step-source">
+              <span className="empty-step-label">1 · Source</span>
+              <div className="empty-step-title">Paste an arXiv URL</div>
+              <p className="empty-step-body">
+                Drop a link and we fetch the PDF, the source bundle, and a pinned
+                commit — never the live main branch.
+              </p>
+            </div>
+            <div className="empty-step" data-testid="dashboard-empty-step-audit">
+              <span className="empty-step-label">2 · Audit</span>
+              <div className="empty-step-title">Every event is logged</div>
+              <p className="empty-step-body">
+                Source, parse, extract, score — each step is recorded with the
+                timestamp, the role, and the input that produced it.
+              </p>
+            </div>
+            <div className="empty-step" data-testid="dashboard-empty-step-verify">
+              <span className="empty-step-label">3 · Verify</span>
+              <div className="empty-step-title">Human approves first</div>
+              <p className="empty-step-body">
+                Before any tool runs, the agent pauses for a typed owner match
+                and a 3-second hold. Deny at any time.
+              </p>
+            </div>
+          </div>
+          <div className="mt-7">
+            <Link href="/paper/new" className="btn btn-primary" data-testid="dashboard-empty-cta">
+              Drop your first paper
+            </Link>
           </div>
         </div>
       )}
