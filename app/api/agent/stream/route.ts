@@ -303,6 +303,41 @@ export async function buildStream(input: {
         // terminal update below skips halted papers, so the hard stop
         // sticks.
         if (event.type === "turn.done") {
+          // Qodo round 3 — the real TrueForge wire surfaces every
+          // `tool.approval_required` gate bundled inside the terminal
+          // turn.done payload (via `requiredActions[]`). The fake
+          // adapter emits a separate tool.approval_required event for
+          // each one, which hits the gate-insert block above. When
+          // running live, we may only get the bundle — so iterate
+          // requiredActions here and insert any missing gate rows.
+          const requiredActions = (event.payload.requiredActions as Array<Record<string, unknown>> | undefined) ?? [];
+          for (const act of requiredActions) {
+            // Both `tool.approval_required` and `tool.response_required` need
+            // a human-in-the-loop surface. TrueForge bundles them inside the
+            // terminal `turn.done` payload, so the live `tool.approval_*`
+            // event path (the one the fake adapter uses) doesn't fire when
+            // running against real TrueForge. Treat both as verify gates.
+            if (act?.type !== "tool.approval_required" && act?.type !== "tool.response_required") continue;
+            const threadId = String(act.threadId ?? act.thread_id ?? "");
+            const tcs = (Array.isArray(act.toolCalls) ? act.toolCalls : Array.isArray(act.tool_calls) ? act.tool_calls : []) as Array<Record<string, unknown>>;
+            const first = tcs[0] ?? {};
+            const toolCallId = String(first.id ?? first.toolCallId ?? "");
+            const toolName = String(first.name ?? first.toolName ?? "tool");
+            if (!toolCallId) continue;
+            try {
+              await insertGate({
+                paperId,
+                threadId,
+                toolCallId,
+                toolName,
+                kind: "verify",
+                severity: act.type === "tool.response_required" ? "reversible" : "irreversible",
+                payload: act,
+              });
+            } catch (e) {
+              console.error("[stream] requiredAction gate insert failed:", (e as Error).message);
+            }
+          }
           const m = (event.payload.metrics as { totalTokens?: number; totalCostInUsd?: number } | undefined) ?? {};
           try {
             const stopped = await enforceCap(paperId, {
