@@ -133,6 +133,12 @@ Every substantive change lands through a pull request reviewed by the Qodo
 GitHub App before merge. The full Qodo review policy and the install URL
 are in [QODO_REVIEW.md](QODO_REVIEW.md).
 
+**Phase 7 — real wire-up (merged):** [#14 — feat(phase-7): wire app to real
+TrueForge + GMI (Qodo-reviewed)](https://github.com/puri-adityakumar/openwrite/pull/14),
+squash-merged as `9d70f70`. Qodo posted "Great, no issues found!" after
+reviewing the HttpTrueForgeClient, the stream route's gate-insert fix,
+the smoke scripts, and the demo-recording driver.
+
 **First PR (merged):** [#1 — chore(deps): install tsx so parity and demo
 scripts resolve to a real
 binary](https://github.com/puri-adityakumar/openwrite/pull/1), squash-merged
