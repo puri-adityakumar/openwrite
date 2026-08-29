@@ -74,7 +74,7 @@ export default async function DashboardPage() {
           {papers.map((p) => (
             <Link key={p.id} href={`/paper/${p.slug}`} className="card no-underline hover:border-[var(--color-foreground)] transition-colors">
               <div className="flex items-start justify-between gap-3">
-                <h3 className="text-base leading-tight">
+                <h3 className="text-base leading-tight line-clamp-2 min-w-0 break-all">
                   {p.title ?? p.slug}
                 </h3>
                 <Pill tone={statusTone(p.status)} className="shrink-0">
