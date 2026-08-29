@@ -191,150 +191,194 @@ export function VerifyCard(props: VerifyCardProps) {
       </header>
 
       {/* G1 #1 — Provenance */}
-      <section data-testid="g1-provenance" className="mt-4">
-        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">1 · Provenance</h4>
-        <dl className="mt-1 grid grid-cols-[8rem_1fr] gap-x-2 text-sm">
-          {props.provenance.arxivId && (<>
-            <dt>arXiv ID</dt><dd>{props.provenance.arxivId}</dd>
-          </>)}
-          <dt>Title</dt><dd>{props.provenance.title}</dd>
-          <dt>Authors</dt><dd>{props.provenance.authors.join(", ")}</dd>
-          <dt>Fetched</dt><dd>{props.provenance.fetchedAt}</dd>
-          <dt>Source</dt>
-          <dd className="break-all">
-            {props.provenance.sourceUrl}{" "}
-            <span className="text-[var(--color-muted-foreground)]">(sha256 {props.provenance.sourceSha256.slice(0, 12)}…)</span>
-          </dd>
-          <dt>Repo</dt>
-          <dd className="break-all">
-            {props.provenance.repoUrl}{" "}
-            <span className="text-[var(--color-muted-foreground)]">@{props.provenance.repoCommitSha.slice(0, 7)}</span>
-          </dd>
-        </dl>
-      </section>
+      <details open data-testid="g1-provenance" className="g1-section mt-4">
+        <summary>
+          <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">1 · Provenance</h4>
+        </summary>
+        <div className="g1-section-body">
+          <dl className="mt-1 grid grid-cols-[8rem_1fr] gap-x-2 text-sm">
+            {props.provenance.arxivId && (<>
+              <dt>arXiv ID</dt><dd>{props.provenance.arxivId}</dd>
+            </>)}
+            <dt>Title</dt><dd>{props.provenance.title}</dd>
+            <dt>Authors</dt><dd>{props.provenance.authors.join(", ")}</dd>
+            <dt>Fetched</dt><dd>{props.provenance.fetchedAt}</dd>
+            <dt>Source</dt>
+            <dd className="break-all">
+              {props.provenance.sourceUrl}{" "}
+              <span className="text-[var(--color-muted-foreground)]">(sha256 {props.provenance.sourceSha256.slice(0, 12)}…)</span>
+            </dd>
+            <dt>Repo</dt>
+            <dd className="break-all">
+              {props.provenance.repoUrl}{" "}
+              <span className="text-[var(--color-muted-foreground)]">@{props.provenance.repoCommitSha.slice(0, 7)}</span>
+            </dd>
+          </dl>
+        </div>
+      </details>
 
       {/* G1 #2 — Intent */}
-      <section data-testid="g1-intent" className="mt-4">
-        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">2 · Declared intent</h4>
-        <p className="mt-1 text-sm text-[var(--color-foreground)]">{props.intent}</p>
-      </section>
+      <details open data-testid="g1-intent" className="g1-section mt-4">
+        <summary>
+          <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">2 · Declared intent</h4>
+        </summary>
+        <div className="g1-section-body">
+          <p className="mt-1 text-sm text-[var(--color-foreground)]">{props.intent}</p>
+        </div>
+      </details>
 
       {/* G1 #3 — Command */}
-      <section data-testid="g1-command" className="mt-4">
-        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">3 · Command (verbatim)</h4>
-        <pre className="mt-1 rounded bg-[var(--color-secondary)] p-2 text-xs font-mono whitespace-pre-wrap break-all text-[var(--color-foreground)]">
-          {String(gate.payload?.command ?? gate.tool_name)}
-        </pre>
-      </section>
+      <details open data-testid="g1-command" className="g1-section mt-4">
+        <summary>
+          <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">3 · Command (verbatim)</h4>
+        </summary>
+        <div className="g1-section-body">
+          <pre className="mt-1 rounded bg-[var(--color-secondary)] p-2 text-xs font-mono whitespace-pre-wrap break-all text-[var(--color-foreground)]">
+            {String(gate.payload?.command ?? gate.tool_name)}
+          </pre>
+        </div>
+      </details>
 
       {/* G1 #4 — Resource budget */}
-      <section data-testid="g1-budget" className="mt-4">
-        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">4 · Resource budget</h4>
-        <ul className="mt-1 grid grid-cols-2 gap-x-4 text-sm">
-          <li>CPU: {props.budget.cpu}</li>
-          <li>RAM: {props.budget.ram}</li>
-          <li>Disk: {props.budget.disk}</li>
-          <li>Wall clock: {props.budget.wallClock}</li>
-          <li>Network: {props.budget.networkMode}</li>
-          <li>Egress allowlist: {props.budget.egressAllowlist.join(", ") || "—"}</li>
-        </ul>
-      </section>
+      <details open data-testid="g1-budget" className="g1-section mt-4">
+        <summary>
+          <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">4 · Resource budget</h4>
+        </summary>
+        <div className="g1-section-body">
+          <ul className="mt-1 grid grid-cols-2 gap-x-4 text-sm">
+            <li>CPU: {props.budget.cpu}</li>
+            <li>RAM: {props.budget.ram}</li>
+            <li>Disk: {props.budget.disk}</li>
+            <li>Wall clock: {props.budget.wallClock}</li>
+            <li>Network: {props.budget.networkMode}</li>
+            <li>Egress allowlist: {props.budget.egressAllowlist.join(", ") || "—"}</li>
+          </ul>
+        </div>
+      </details>
 
       {/* G1 #5 — Sandbox envelope */}
-      <section data-testid="g1-envelope" className="mt-4">
-        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">5 · Sandbox envelope</h4>
-        <ul className="mt-1 grid grid-cols-2 gap-x-4 text-sm">
-          <li>Hypervisor: {props.envelope.hypervisor}</li>
-          <li>Base image: <span className="font-mono text-xs">{props.envelope.baseImageDigest}</span></li>
-          <li>Seccomp: {props.envelope.seccompProfile}</li>
-          <li>UID: {props.envelope.uid}</li>
-          <li>Mounts: {props.envelope.mounts}</li>
-          <li>Ephemeral: {props.envelope.ephemeral}</li>
-        </ul>
-      </section>
+      <details open data-testid="g1-envelope" className="g1-section mt-4">
+        <summary>
+          <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">5 · Sandbox envelope</h4>
+        </summary>
+        <div className="g1-section-body">
+          <ul className="mt-1 grid grid-cols-2 gap-x-4 text-sm">
+            <li>Hypervisor: {props.envelope.hypervisor}</li>
+            <li>Base image: <span className="font-mono text-xs">{props.envelope.baseImageDigest}</span></li>
+            <li>Seccomp: {props.envelope.seccompProfile}</li>
+            <li>UID: {props.envelope.uid}</li>
+            <li>Mounts: {props.envelope.mounts}</li>
+            <li>Ephemeral: {props.envelope.ephemeral}</li>
+          </ul>
+        </div>
+      </details>
 
       {/* G1 #6 — Risk flags (auto) */}
-      <section data-testid="g1-risk-flags" className="mt-4">
-        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)] flex items-center gap-2">
-          6 · Risk flags (auto)
-          {riskN > 0 && (
-            <Pill tone="bad" data-testid="verify-risk-count" style={{ borderColor: "var(--color-destructive)", color: "var(--color-destructive)" }}>
-              {riskN} high
-            </Pill>
-          )}
-        </h4>
-        <ul className="mt-1 grid grid-cols-2 gap-x-4 text-sm">
-          {riskFlags.map((f) => (
-            <li key={f.key} data-testid={`risk-flag-${f.key}`} data-present={f.present ? "true" : "false"} className={f.present ? "text-[var(--color-foreground)]" : "text-[var(--color-muted-foreground)]"}>
-              <span className="font-mono mr-1" aria-hidden="true">{f.present ? "!" : "·"}</span>
-              {f.label}
-              {f.detail && <span className="ml-1 text-[var(--color-muted-foreground)]">— {f.detail}</span>}
-            </li>
-          ))}
-        </ul>
-      </section>
+      <details open data-testid="g1-risk-flags" className="g1-section mt-4">
+        <summary>
+          <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)] flex items-center gap-2">
+            <span>6 · Risk flags (auto)</span>
+            {riskN > 0 && (
+              <Pill tone="bad" data-testid="verify-risk-count" style={{ borderColor: "var(--color-destructive)", color: "var(--color-destructive)" }}>
+                {riskN} high
+              </Pill>
+            )}
+          </h4>
+        </summary>
+        <div className="g1-section-body">
+          <ul className="mt-1 grid grid-cols-2 gap-x-4 text-sm">
+            {riskFlags.map((f) => (
+              <li key={f.key} data-testid={`risk-flag-${f.key}`} data-present={f.present ? "true" : "false"} className={f.present ? "text-[var(--color-foreground)]" : "text-[var(--color-muted-foreground)]"}>
+                <span className="font-mono mr-1" aria-hidden="true">{f.present ? "!" : "·"}</span>
+                {f.label}
+                {f.detail && <span className="ml-1 text-[var(--color-muted-foreground)]">— {f.detail}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </details>
 
       {/* G1 #7 — Data scope */}
-      <section data-testid="g1-data-scope" className="mt-4">
-        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">7 · Data scope</h4>
-        <p className="mt-1 text-sm text-[var(--color-foreground)]">{props.dataScope}</p>
-      </section>
+      <details open data-testid="g1-data-scope" className="g1-section mt-4">
+        <summary>
+          <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">7 · Data scope</h4>
+        </summary>
+        <div className="g1-section-body">
+          <p className="mt-1 text-sm text-[var(--color-foreground)]">{props.dataScope}</p>
+        </div>
+      </details>
 
       {/* G1 #8 — Persistence */}
-      <section data-testid="g1-persistence" className="mt-4">
-        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">8 · Persistence</h4>
-        <p className="mt-1 text-sm text-[var(--color-foreground)]">{props.persistence}</p>
-      </section>
+      <details open data-testid="g1-persistence" className="g1-section mt-4">
+        <summary>
+          <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">8 · Persistence</h4>
+        </summary>
+        <div className="g1-section-body">
+          <p className="mt-1 text-sm text-[var(--color-foreground)]">{props.persistence}</p>
+        </div>
+      </details>
 
       {/* G1 #9 — Kill switch */}
-      <section data-testid="g1-kill-switch" className="mt-4">
-        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">9 · Kill switch</h4>
-        <button
-          type="button"
-          onClick={props.onKillSwitch}
-          data-testid="verify-kill"
-          disabled={decided}
-          className="btn btn-destructive mt-1"
-          style={{ minHeight: 44, padding: "0.625rem 0.875rem" }}
-        >
-          ⛔ Abort pending tool call
-        </button>
-      </section>
+      <details open data-testid="g1-kill-switch" className="g1-section mt-4">
+        <summary>
+          <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">9 · Kill switch</h4>
+        </summary>
+        <div className="g1-section-body">
+          <button
+            type="button"
+            onClick={props.onKillSwitch}
+            data-testid="verify-kill"
+            disabled={decided}
+            className="btn btn-destructive mt-1"
+            style={{ minHeight: 44, padding: "0.625rem 0.875rem" }}
+          >
+            ⛔ Abort pending tool call
+          </button>
+        </div>
+      </details>
 
       {/* G1 #10 — Identity confirm */}
-      <section data-testid="g1-identity" className="mt-4">
-        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">
-          10 · Identity confirm — type{" "}
-          <code className="font-mono text-[var(--color-foreground)]">
-            {expectedOwner || "(repo owner not supplied — Allow is disabled)"}
-          </code>{" "}
-          and hold Allow for 3s
-        </h4>
-        <input
-          type="text"
-          value={typedOwner}
-          onChange={(e) => setTypedOwner(e.target.value)}
-          placeholder={expectedOwner}
-          disabled={decided}
-          data-testid="verify-owner-input"
-          className="input mt-1.5"
-          style={{ fontFamily: "var(--font-mono)" }}
-        />
-        <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
-          {ownerMatch ? "Owner matches." : "Type the exact repo owner to enable Allow."}
-        </p>
-      </section>
+      <details open data-testid="g1-identity" className="g1-section mt-4">
+        <summary>
+          <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">
+            10 · Identity confirm — type{" "}
+            <code className="font-mono text-[var(--color-foreground)]">
+              {expectedOwner || "(repo owner not supplied — Allow is disabled)"}
+            </code>{" "}
+            and hold Allow for 3s
+          </h4>
+        </summary>
+        <div className="g1-section-body">
+          <input
+            type="text"
+            value={typedOwner}
+            onChange={(e) => setTypedOwner(e.target.value)}
+            placeholder={expectedOwner}
+            disabled={decided}
+            data-testid="verify-owner-input"
+            className="input mt-1.5"
+            style={{ fontFamily: "var(--font-mono)" }}
+          />
+          <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
+            {ownerMatch ? "Owner matches." : "Type the exact repo owner to enable Allow."}
+          </p>
+        </div>
+      </details>
 
       {/* G1 #11 — Liability */}
-      <section data-testid="g1-liability" className="mt-4">
-        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">11 · Liability</h4>
-        <p className="mt-1 text-sm text-[var(--color-foreground)]">
-          By allowing, you authorise the agent to execute the command above inside a
-          disposable sandbox. The agent has no access to your home directory, browser
-          profile, or any secrets. You may deny at any time; the affected claims will be
-          marked unverified.
-        </p>
-      </section>
+      <details open data-testid="g1-liability" className="g1-section mt-4">
+        <summary>
+          <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">11 · Liability</h4>
+        </summary>
+        <div className="g1-section-body">
+          <p className="mt-1 text-sm text-[var(--color-foreground)]">
+            By allowing, you authorise the agent to execute the command above inside a
+            disposable sandbox. The agent has no access to your home directory, browser
+            profile, or any secrets. You may deny at any time; the affected claims will be
+            marked unverified.
+          </p>
+        </div>
+      </details>
 
       {/* Actions */}
       <footer className="mt-6 flex items-center gap-2 border-t border-[var(--color-border)] pt-3 flex-wrap">

@@ -430,3 +430,40 @@ main { animation: rcp-fade-in 0.3s var(--ease-out) both; }
   padding: 0 1.5rem;
 }
 .page-wide { max-width: 80rem; margin: 0 auto; padding: 0 1.5rem; }
+
+/* ============================================================
+   Verify card — G1 accordion sections
+   Each G1 section is a <details open> with a left accent bar.
+   The bar inherits from --accent-blue by default; the kill-switch
+   section (#9) tints destructive so the abort CTA stands out.
+   ============================================================ */
+.g1-section {
+  border-left: 3px solid var(--accent-blue);
+  padding-left: 0.875rem;
+}
+.g1-section > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 0.125rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.g1-section > summary::-webkit-details-marker { display: none; }
+.g1-section > summary::before {
+  content: "▾";
+  font-size: 0.7rem;
+  color: var(--color-muted-foreground);
+  transition: transform 0.15s ease-out;
+  display: inline-block;
+}
+.g1-section:not([open]) > summary::before { transform: rotate(-90deg); }
+.g1-section > summary > h4 { display: inline; }
+.g1-section > summary:hover > h4 { color: var(--color-foreground); }
+.g1-section-body { padding-top: 0.125rem; }
+.g1-section[data-testid="g1-kill-switch"] {
+  border-left-color: var(--color-destructive);
+}
+@media (prefers-reduced-motion: reduce) {
+  .g1-section > summary::before { transition: none; }
+}
