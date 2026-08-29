@@ -1,0 +1,29 @@
+# WeMakeDevs submission — Google Form entry IDs
+# Open the form once to get the live fvv value, then POST with auth.
+#
+# Form URL: https://forms.gle/PxGLsWW1HPyroQ5u9
+# FormRes:  https://docs.google.com/forms/d/e/1FAIpQLSd2DDM-F0BJUqxu8if-XjCZufWH_mRVOlZTYAqsQXL2cNdjYA/formResponse
+#
+# Required hidden fields:
+#   fvv=1
+#   pageHistory=0
+#   emailField=<Google requires session cookie; cannot bypass>
+#
+# Per-field entry IDs (extracted from FB_PUBLIC_LOAD_DATA_):
+entry.489408364  Team name
+entry.2046561719  Name
+entry.436002274  Track
+entry.1002301861  GitHub URL
+entry.1707411636  Deployed URL
+entry.2088466676  YouTube URL
+entry.622683195  What does project do
+entry.1699058585  How did you use TrueForge
+entry.1052199790  How did you use Qodo
+entry.1726855445  Blog link
+entry.2141584497  Feedback
+entry.772104727  How easy
+entry.1440592202  Most useful feature
+entry.786113939  Where stuck
+entry.1163315571  How useful Qodo
+entry.2024325012  Useful/frustrating
+entry.940410243  Which PR stood out
