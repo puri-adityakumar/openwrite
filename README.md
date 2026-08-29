@@ -55,6 +55,68 @@ After `npm install`, the only setup command is `docker compose up` (see the
 100% local standing constraint in [docs/README.md](docs/README.md)). When
 the containers are up, open http://localhost:13000.
 
+### Real TrueForge + GMI path (live LLM)
+
+For the demo and for the WeMakeDevs × TrueFoundry submission, Recap
+talks to a real TrueForge harness (not the in-process fake). The
+quickest path is `npx` standalone:
+
+```bash
+# 1. start TrueForge (one command, no clone)
+npx --yes @truefoundry/trueforge@latest &
+# wait for "Agent server listening on http://localhost:8790"
+
+# 2. register GMI as the Anthropic provider (custom base_url)
+curl -X POST http://localhost:8790/api/v1/settings/model-providers \
+  -H "content-type: application/json" \
+  -d '{"manifest":{
+        "type":"anthropic",
+        "base_url":"https://api.gmi-serving.com/v1",
+        "auth":{"api_key":"'$GMI_API_KEY'"},
+        "models":[{"model_id":"MiniMaxAI/MiniMax-M3","name":"gmi-minimax",
+                   "properties":{"context_length":200000,"max_output_tokens":8192}}]}}'
+
+# 3. set TRUEFORGE_MODE=live in .env and restart the app
+echo "TRUEFORGE_MODE=live" >> .env
+echo "TF_BASE_URL=http://localhost:8790" >> .env
+npm run build && npm run start
+```
+
+**Sandbox model:** TrueForge ships Daytona as the only catalogued sandbox
+provider, but a **local sandbox fallback** auto-engages when the harness
+is in standalone mode and no `sandbox_provider` row is persisted
+(see `LocalSandboxProvider` in upstream `trueforge/src/sandbox/local/`).
+For the hackathon submission, Recap runs with `config.sandbox.enabled:
+false` on the agent spec — the live GMI model still streams real
+`turn.created` / `model.message.delta` / `tool.approval_required` /
+`turn.done` events, the gate cards surface the approval pause, and the
+allow/deny routes back to TrueForge as a real resume. Tool *execution*
+behind the gate is skipped (no Daytona snapshot-write permission in the
+submitted key); the harness surfaces this as `sandbox.disabled` in the
+audit. Full smoke validation: `bash scripts/smoke-http.sh`.
+
+### What we verify works (real, not faked)
+
+```
+$ bash scripts/smoke-http.sh
+[smoke-http] TrueForge health              OK
+[smoke-http] GMI provider configured       OK (anthropic, gmi-minimax, base_url ok)
+[smoke-http] No Daytona sandbox provider   404 (local fallback engaged)
+[smoke-http] Create test session           201 (sid=01m17rrtn172w7r99zqpj42e92)
+[smoke-http] Create turn (user.message)    200 (tid=01m17rrtnxeemczrfy76rs0vp1.local)
+[smoke-http] Subscribe SSE 25s
+  data: {"type":"turn.created","turn_id":"...","state":{"status":"running"},...}
+  data: {"type":"model.message","thread_id":"main",...}
+  data: {"content":"pong","type":"model.message.delta",...}
+  data: {"type":"model.message.delta","finish_reason":"stop",...}
+  data: {"type":"turn.done","state":{"status":"done","metrics":{"total_tokens":1538}},...}
+[smoke-http] Cancel session                200
+[smoke-http] OK
+```
+
+The "pong" string is a real LLM response from `MiniMaxAI/MiniMax-M3` via
+GMI Cloud — not a fixture.
+
 The demo credentials on the landing page are visible by default
 (`demo@local / demo1234`) so a tired judge is one click from the cockpit.
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterAll, beforeEach } from "vitest";
 import { query, closePool } from "../lib/db";
-import { __setTrueForgeClientForTest, getTrueForgeClient, type TrueForgeClient } from "../lib/trueforge";
+import { __setTrueForgeClientForTest, getTrueForgeClient, FakeTrueForgeClient, type TrueForgeClient } from "../lib/trueforge";
 
 // Phase 5.3 — replay tests.
 //
@@ -142,7 +142,9 @@ describe("getReplayStatus — the freshness proof", () => {
 
 describe("fake adapter — per-session sandbox freshness", () => {
   it("two different sessions yield two different sandbox.created ids", async () => {
-    __setTrueForgeClientForTest(null); // the real fake
+    // Explicitly inject a FakeTrueForgeClient regardless of TRUEFORGE_MODE
+    // (these tests exercise the fake adapter's session/turn keying).
+    __setTrueForgeClientForTest(new FakeTrueForgeClient());
     const client: TrueForgeClient = getTrueForgeClient();
     const s1 = await client.startSession({ paperId: PID, mode: "review", source: "fixture:demo" });
     const s2 = await client.startSession({ paperId: PID, mode: "review", source: "fixture:demo" });
@@ -170,7 +172,7 @@ describe("fake adapter — per-session sandbox freshness", () => {
   });
 
   it("re-streaming the SAME turn is stable (reload-safe ids)", async () => {
-    __setTrueForgeClientForTest(null);
+    __setTrueForgeClientForTest(new FakeTrueForgeClient());
     const client = getTrueForgeClient();
     const s = await client.startSession({ paperId: PID, mode: "review", source: "fixture:demo" });
     const a = await client.createTurnStream(s.sessionId, s.turnId);

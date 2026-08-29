@@ -79,6 +79,6 @@ describe("Publish card expiry", () => {
     };
     const { getByTestId } = render(<PublishCard {...props} />);
     act(() => { vi.advanceTimersByTime(3000); });
-    expect(getByTestId("publish-expired").textContent).toMatch(/approval expired/);
+    expect(getByTestId("publish-expired").textContent).toMatch(/approval expired/i);
   });
 });

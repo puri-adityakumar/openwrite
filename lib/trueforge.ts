@@ -10,12 +10,9 @@
 //              tests (sandbox.created probe, delta coalescing, paused
 //              terminal, role prefix) all run against this without needing
 //              a live TrueForge server.
-//   - "live"   (set TRUEFORGE_MODE=live and TRUEFORGE_BASE_URL=http://localhost:18790):
-//              imports `@truefoundry/trueforge-sdk` lazily and forwards to
-//              its `createTurnStream`. The package is not installed in this
-//              dev env (we deferred the install — see PR description); the
-//              import is gated so flipping TRUEFORGE_MODE=live without the
-//              package gives a clean runtime error, not a build break.
+//   - "live"   (set TRUEFORGE_MODE=live and TRUEFORGE_BASE_URL=http://localhost:8790):
+//              talks HTTP directly to the TrueForge server (sessions +
+//              turns + resumable SSE). No SDK package required.
 //
 // Why a fake: the TrueForge source isn't checked into this repo. The
 // `docker-compose.trueforge.yml` bring-up requires a sibling `../trueforge`
@@ -23,6 +20,7 @@
 // how we stream events; the fake exercises them end-to-end today.
 
 import type { LiveEvent } from "./event-reducer";
+import { createParser, type EventSourceParser, type EventSourceMessage } from "eventsource-parser";
 
 export type TrueForgeMode = "fake" | "live";
 
@@ -262,7 +260,9 @@ function fakeResumeEventsFor(
 // fake loops back to the same paused sequence).
 const resumeMemory: Map<string, { decision: "allow" | "deny"; events: LiveEvent[]; turnId: string }> = new Map();
 
-class FakeTrueForgeClient implements TrueForgeClient {
+// Exported so tests can construct + inject a fake instance via
+// __setTrueForgeClientForTest, keeping them independent of TRUEFORGE_MODE.
+export class FakeTrueForgeClient implements TrueForgeClient {
   async startSession(input: StartSessionInput): Promise<StartSessionResult> {
     // The session id is unique per start (a random suffix): a replayed
     // paper gets a NEW session, which the per-(session, turn) uid in
@@ -310,55 +310,254 @@ class FakeTrueForgeClient implements TrueForgeClient {
 }
 
 // ----------------------------------------------------------------------------
-// Live adapter — lazy import of the SDK. The package is NOT installed in
-// this dev env; flipping TRUEFORGE_MODE=live without the package will throw
-// a clean runtime error pointing to the install command.
+// Live adapter — direct HTTP/SSE against the TrueForge server.
+//
+// Replaces the previous lazy-SDK stub (`LiveTrueForgeClient`, which
+// required `@truefoundry/trueforge-sdk` — not installed in this dev env).
+// The HTTP layer matches the TrueForge OpenAPI spec at /api/v1:
+//   POST /api/v1/sessions
+//   POST /api/v1/sessions/{id}/turns   (stream=false to kick off a run)
+//   GET  /api/v1/sessions/{id}/turns/{tid}/subscribe   (resumable SSE)
+//   POST /api/v1/sessions/{id}/cancel
+//
+// Default base URL is `http://localhost:8790` (the npx standalone
+// harness); override with `TRUEFORGE_BASE_URL`.
 // ----------------------------------------------------------------------------
-class LiveTrueForgeClient implements TrueForgeClient {
-  private sdk: any = null;
-  private async client() {
-    if (this.sdk) return this.sdk;
-    let mod: any;
-    try {
-      // The SDK is intentionally NOT a dependency. Install with:
-      //   npm install @truefoundry/trueforge-sdk
-      // when wiring a real TrueForge server. Until then, live mode is
-      // a one-line flip and the import error is the contract.
-      //
-      // The dynamic-import path is assembled at runtime via a string
-      // variable so webpack does not try to resolve it at build time.
-      const sdkName = "@truefoundry/trueforge-sdk";
-      mod = await import(/* webpackIgnore: true */ sdkName);
-    } catch (e) {
+
+// Wire-level shapes — kept loose because the upstream OpenAPI tags every
+// event with a discriminator and we only consume a small subset.
+type WireEvent = {
+  type: string;
+  id?: string;
+  created_at?: string;
+  thread_id?: string | null;
+  turn_id?: string;
+  sandbox_id?: string;
+  title?: string;
+  agent_info?: { type?: string; name?: string; input?: string; model?: string };
+  parent?: { thread_id?: string; tool_call_id?: string };
+  tool_call_id?: string;
+  content?: string | null;
+  tool_calls?: Array<{ id: string; source_event_id?: string }>;
+  mcp_servers?: Array<{ id?: string; name?: string }>;
+  state?: { status: string; required_actions?: unknown[]; metrics?: unknown };
+  finish_reason?: string | null;
+};
+
+const AGENT_SPEC = {
+  model: { name: "anthropic/gmi-minimax" },
+  instructions:
+    "You are the Openwrite research agent. Read the user's source, " +
+    "stream your work as you go, and pause for human approval only when " +
+    "a tool call is destructive or writes outside a sandbox.",
+  config: { sandbox: { enabled: false } },
+};
+
+function jsonHeaders(extra?: Record<string, string>): Record<string, string> {
+  return { "content-type": "application/json", accept: "application/json", ...(extra ?? {}) };
+}
+
+async function readJson<T = unknown>(res: Response): Promise<T> {
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(
+      `TrueForge ${res.status} ${res.statusText}: ${text.slice(0, 500)}`,
+    );
+  }
+  if (!text) return undefined as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch (e) {
+    throw new Error(`TrueForge: invalid JSON response: ${(e as Error).message}`);
+  }
+}
+
+// Heuristic for the tool name carried on tool.response events. The wire
+// payload is freeform `content` (a string the agent chose to write); if
+// it's JSON we look for `tool` / `name` / `function.name` keys, otherwise
+// we fall back to the generic name.
+function extractToolName(content: string | null | undefined): string {
+  if (!content) return "tool";
+  try {
+    const parsed = JSON.parse(content);
+    if (parsed && typeof parsed === "object") {
+      const cand =
+        (parsed as Record<string, unknown>).tool ??
+        (parsed as Record<string, unknown>).name ??
+        (parsed as Record<string, unknown>).toolName;
+      if (typeof cand === "string" && cand.length > 0) return cand;
+      const fn = (parsed as Record<string, unknown>).function;
+      if (fn && typeof fn === "object") {
+        const fnName = (fn as Record<string, unknown>).name;
+        if (typeof fnName === "string" && fnName.length > 0) return fnName;
+      }
+    }
+  } catch {
+    // not JSON; fall through
+  }
+  return "tool";
+}
+
+class HttpTrueForgeClient implements TrueForgeClient {
+  // startSession creates the session AND kicks off the initial turn
+  // (stream=false so the call returns quickly). The returned turnId is
+  // what `createTurnStream` subscribes to.
+  async startSession(input: StartSessionInput): Promise<StartSessionResult> {
+    const url = `${baseUrl()}/api/v1/sessions`;
+    const sessionRes = await fetch(url, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ agent: { spec: AGENT_SPEC } }),
+    });
+    const sessionJson = await readJson<{ data?: { id?: string } }>(sessionRes);
+    const sessionId = sessionJson.data?.id;
+    if (!sessionId) {
+      throw new Error("TrueForge: create session response missing data.id");
+    }
+
+    const turnRes = await fetch(`${baseUrl()}/api/v1/sessions/${sessionId}/turns`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        input: [{ type: "user.message", content: input.source }],
+        previous_turn_id: "none",
+        stream: false,
+      }),
+    });
+    const turnJson = await readJson<{ data?: { id?: string } }>(turnRes);
+    const turnId = turnJson.data?.id;
+    if (!turnId) {
+      throw new Error("TrueForge: create turn response missing data.id");
+    }
+    return { sessionId, turnId };
+  }
+
+  // createTurnStream opens the resumable SSE stream against the live
+  // turn. We pull chunks off the fetch body and feed them into
+  // `eventsource-parser`, translating each parsed JSON envelope into a
+  // LiveEvent before yielding it to the caller. Cancellation aborts the
+  // underlying fetch.
+  async createTurnStream(sessionId: string, turnId: string): Promise<TurnStream> {
+    const url =
+      `${baseUrl()}/api/v1/sessions/${encodeURIComponent(sessionId)}` +
+      `/turns/${encodeURIComponent(turnId)}/subscribe`;
+    const controller = new AbortController();
+    const queue: LiveEvent[] = [];
+    let parser: EventSourceParser | null = null;
+    let pumpError: Error | null = null;
+    let pumpDone = false;
+    type Waiter = (r: IteratorResult<LiveEvent>) => void;
+    let waiter: Waiter | null = null;
+    const flushWaiter = (r: IteratorResult<LiveEvent>) => {
+      if (!waiter) return;
+      const w = waiter;
+      waiter = null;
+      w(r);
+    };
+
+    const deliver = (ev: LiveEvent) => {
+      if (waiter) {
+        flushWaiter({ value: ev, done: false });
+      } else {
+        queue.push(ev);
+      }
+    };
+
+    parser = createParser({
+      onEvent: (msg: EventSourceMessage) => {
+        if (!msg.data || msg.data === "[DONE]") return;
+        const raw = msg.data;
+        let parsed: WireEvent | null = null;
+        try {
+          parsed = JSON.parse(raw) as WireEvent;
+        } catch (e) {
+          console.error("[trueforge] SSE parse failed:", (e as Error).message, raw.slice(0, 200));
+          return;
+        }
+        const translated = translateWireEvent(parsed, sessionId);
+        if (translated) deliver(translated);
+      },
+      onError: (e) => {
+        pumpError = e instanceof Error ? e : new Error(String(e));
+      },
+    });
+
+    // The fetch + read loop runs in the background; cancellation aborts.
+    (async () => {
+      try {
+        const res = await fetch(url, {
+          method: "GET",
+          headers: { accept: "text/event-stream" },
+          signal: controller.signal,
+        });
+        if (!res.ok || !res.body) {
+          const errText = await res.text().catch(() => "");
+          pumpError = new Error(
+            `TrueForge subscribe ${res.status} ${res.statusText}: ${errText.slice(0, 500)}`,
+          );
+          pumpDone = true;
+          flushWaiter({ value: undefined, done: true });
+          return;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) parser!.feed(decoder.decode(value, { stream: true }));
+        }
+      } catch (e) {
+        // AbortError just means the caller cancelled — don't surface.
+        if ((e as Error).name !== "AbortError") {
+          pumpError = e instanceof Error ? e : new Error(String(e));
+        }
+      } finally {
+        pumpDone = true;
+        flushWaiter({ value: undefined, done: true });
+      }
+    })();
+
+    const iterator: AsyncIterableIterator<LiveEvent> = {
+      next: async () => {
+        if (queue.length > 0) {
+          return { value: queue.shift()!, done: false };
+        }
+        if (pumpError) throw pumpError;
+        if (pumpDone) return { value: undefined, done: true };
+        return new Promise((resolve) => {
+          waiter = resolve;
+        });
+      },
+      return: async () => {
+        try { controller.abort(); } catch { /* noop */ }
+        return { value: undefined, done: true };
+      },
+      throw: async (e) => { throw e; },
+      [Symbol.asyncIterator]: () => iterator,
+    };
+    return {
+      iterator,
+      cancel: () => {
+        try { controller.abort(); } catch { /* noop */ }
+      },
+    };
+  }
+
+  async cancelSession(sessionId: string): Promise<void> {
+    const res = await fetch(
+      `${baseUrl()}/api/v1/sessions/${encodeURIComponent(sessionId)}/cancel`,
+      { method: "POST", headers: jsonHeaders() },
+    );
+    // 200 means the cancel was accepted; 404 means nothing was running.
+    if (!res.ok && res.status !== 404) {
+      const text = await res.text().catch(() => "");
       throw new Error(
-        "TRUEFORGE_MODE=live requires @truefoundry/trueforge-sdk. " +
-        "Install with: npm install @truefoundry/trueforge-sdk",
+        `TrueForge cancel ${res.status} ${res.statusText}: ${text.slice(0, 500)}`,
       );
     }
-    const Ctor = mod.TrueForgeClient ?? mod.default ?? mod;
-    this.sdk = new Ctor({ baseUrl: baseUrl() });
-    return this.sdk;
   }
-  async startSession(input: StartSessionInput): Promise<StartSessionResult> {
-    const c = await this.client();
-    const session = await c.sessions.create({ metadata: { paperId: input.paperId, mode: input.mode } });
-    const turn = await c.createTurn(session.id, { input: [{ type: "user.message", content: input.source }] });
-    return { sessionId: session.id, turnId: turn.id };
-  }
-  async createTurnStream(sessionId: string, turnId: string): Promise<TurnStream> {
-    const c = await this.client();
-    const iter = await c.createTurnStream(sessionId, { turnId });
-    return { iterator: iter, cancel: () => c.sessions.cancel(sessionId) };
-  }
-  async cancelSession(sessionId: string): Promise<void> {
-    const c = await this.client();
-    await c.sessions.cancel(sessionId);
-  }
+
   async resumeTurnWithApproval(input: ResumeTurnInput): Promise<ResumeTurnResult> {
-    const c = await this.client();
-    // The resume contract: a NEW turn on the same `threadId` whose
-    // input is a single `user.tool_approval` item. The live SDK call
-    // is intentionally narrow — never mix in `user.message`.
     const item: ResumeInputItem = {
       type: "user.tool_approval",
       threadId: input.threadId,
@@ -368,15 +567,148 @@ class LiveTrueForgeClient implements TrueForgeClient {
           ? { status: "allow" }
           : { status: "deny", reason: input.reason ?? "" },
     };
-    const turn = await c.createTurn(input.sessionId, { input: [item] });
-    return { turnId: turn.id };
+    const res = await fetch(
+      `${baseUrl()}/api/v1/sessions/${encodeURIComponent(input.sessionId)}/turns`,
+      {
+        method: "POST",
+        headers: jsonHeaders(),
+        body: JSON.stringify({
+          input: [item],
+          previous_turn_id: "auto",
+          stream: false,
+        }),
+      },
+    );
+    const json = await readJson<{ data?: { id?: string } }>(res);
+    const turnId = json.data?.id;
+    if (!turnId) {
+      throw new Error("TrueForge: resume turn response missing data.id");
+    }
+    return { turnId };
+  }
+}
+
+// Monotonic counter shared by all streams created by this adapter; the
+// reducer dedupes by `seq` so each event gets a fresh, increasing number.
+let _seqCounter = 0;
+const nextSeq = () => ++_seqCounter;
+
+// Translate a single wire event into the in-repo LiveEvent shape. Returns
+// null for events we don't care about (e.g. tool_calls-only deltas — text
+// already streamed via content chunks).
+function translateWireEvent(
+  ev: WireEvent,
+  fallbackSessionId: string,
+): LiveEvent | null {
+  const base = {
+    id: ev.id ?? `ev_${nextSeq()}`,
+    seq: nextSeq(),
+    createdAt: ev.created_at ?? new Date().toISOString(),
+  };
+  switch (ev.type) {
+    case "turn.created": {
+      return {
+        ...base,
+        type: "turn.created",
+        payload: { sessionId: fallbackSessionId, turnId: ev.turn_id ?? "" },
+      };
+    }
+    case "turn.done": {
+      const state = ev.state ?? { status: "done" };
+      return {
+        ...base,
+        type: "turn.done",
+        payload: {
+          state: state.status,
+          requiredActions: state.required_actions ?? [],
+          metrics: state.metrics ?? { totalTokens: 0, totalCostInUsd: 0 },
+        },
+      };
+    }
+    case "model.message.delta": {
+      // Skip non-text chunks (tool-call deltas, refusal-only deltas).
+      const text = typeof ev.content === "string" ? ev.content : null;
+      if (text === null) return null;
+      return {
+        ...base,
+        type: "model.message.delta",
+        payload: {
+          messageId: ev.id ?? `msg_${base.seq}`,
+          threadId: ev.thread_id ?? "",
+          delta: text,
+        },
+      };
+    }
+    case "tool.response": {
+      return {
+        ...base,
+        type: "tool.response",
+        payload: {
+          threadId: ev.thread_id ?? "",
+          toolName: extractToolName(ev.content),
+          toolCallId: ev.tool_call_id ?? "",
+        },
+      };
+    }
+    case "tool.approval_required": {
+      const first = (ev.tool_calls ?? [])[0];
+      return {
+        ...base,
+        type: "tool.approval_required",
+        // The reducer (and the stream route at lines 220-258) accept
+        // either a flat shape or a nested `toolCalls[*]` shape; we send
+        // BOTH so the audit row gets populated regardless.
+        payload: {
+          threadId: ev.thread_id ?? "",
+          toolCallId: first?.id ?? "",
+          toolName: "tool",
+          toolCalls: ev.tool_calls ?? [],
+        },
+      };
+    }
+    case "thread.created": {
+      return {
+        ...base,
+        type: "thread.created",
+        payload: {
+          threadId: ev.thread_id ?? "",
+          title: ev.title ?? "",
+          agentInfo: ev.agent_info,
+          parent: ev.parent,
+        },
+      };
+    }
+    case "thread.done": {
+      return {
+        ...base,
+        type: "thread.done",
+        payload: { threadId: ev.thread_id ?? "" },
+      };
+    }
+    case "sandbox.created": {
+      return {
+        ...base,
+        type: "sandbox.created",
+        payload: { sandboxId: ev.sandbox_id ?? "" },
+      };
+    }
+    case "mcp.initialize": {
+      const first = (ev.mcp_servers ?? [])[0];
+      return {
+        ...base,
+        type: "mcp.initialize",
+        payload: { server: first?.name ?? "mcp" },
+      };
+    }
+    default:
+      return null;
   }
 }
 
 let _client: TrueForgeClient | null = null;
 export function getTrueForgeClient(): TrueForgeClient {
   if (_client) return _client;
-  _client = mode() === "live" ? new LiveTrueForgeClient() : new FakeTrueForgeClient();
+  _client = mode() === "live" ? new HttpTrueForgeClient() : new FakeTrueForgeClient();
   return _client;
 }
 

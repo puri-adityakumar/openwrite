@@ -1,14 +1,27 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 // Phase 4 — Qodo #5: the fake resume memory must hand a real
 // (post-resume) event sequence to the next createTurnStream call
 // instead of looping back to the same paused sequence.
 
 describe("FakeTrueForgeClient — resume memory (Qodo #5)", () => {
+  let client: Awaited<ReturnType<typeof import("../lib/trueforge")["getTrueForgeClient"]>>;
+
+  beforeEach(async () => {
+    // Force the fake client regardless of TRUEFORGE_MODE — this test
+    // exercises in-process resume memory, not real TrueForge.
+    const mod = await import("../lib/trueforge");
+    const fake = new mod.FakeTrueForgeClient();
+    mod.__setTrueForgeClientForTest(fake);
+    client = fake;
+  });
+
+  afterEach(async () => {
+    const mod = await import("../lib/trueforge");
+    mod.__setTrueForgeClientForTest(null);
+  });
+
   it("resumeTurnWithApproval stores a post-resume sequence keyed by (sessionId, turnId)", async () => {
-    // Use the real client (the default is fake in dev).
-    const { getTrueForgeClient } = await import("../lib/trueforge");
-    const client = getTrueForgeClient();
     const sessionId = `sess_test_${Math.random().toString(36).slice(2, 6)}`;
     const { turnId } = await client.resumeTurnWithApproval({
       sessionId,

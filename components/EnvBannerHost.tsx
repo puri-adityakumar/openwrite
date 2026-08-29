@@ -11,13 +11,17 @@ import { EnvBanner, type EnvStatus } from "./env-banner";
 
 export function EnvBannerHost() {
   const [status, setStatus] = useState<EnvStatus>({ gmi: true, daytona: true });
+  const [mode, setMode] = useState<"live" | "fake">("fake");
 
   const fetchStatus = useCallback(async () => {
     try {
       const r = await fetch("/api/env-status", { cache: "no-store" });
       if (!r.ok) return;
-      const data = (await r.json()) as { ok: boolean; status: EnvStatus };
-      if (data.ok) setStatus(data.status);
+      const data = (await r.json()) as { ok: boolean; mode?: "live" | "fake"; status: EnvStatus };
+      if (data.ok) {
+        if (data.mode) setMode(data.mode);
+        setStatus(data.status);
+      }
     } catch {
       // Network blip; keep the last known status. The next poll will
       // re-attempt; the banner never flickers because we only update
@@ -45,6 +49,8 @@ export function EnvBannerHost() {
       return false;
     }
   }, []);
+
+  if (mode === "fake") return null;
 
   return (
     <EnvBanner

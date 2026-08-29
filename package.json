@@ -15,7 +15,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "parity": "tsx scripts/parity.ts",
-    "demo": "tsx scripts/demo.ts"
+    "demo": "tsx scripts/demo.ts",
+    "smoke": "bash scripts/smoke.sh"
   },
   "repository": {
     "type": "git",

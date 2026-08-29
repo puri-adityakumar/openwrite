@@ -63,7 +63,9 @@ describe("Save card annotation list", () => {
 
   it("renders an empty-state message when there is nothing to merge", () => {
     const { getByTestId } = render(<SaveCard {...baseProps} annotations={[]} />);
-    expect(getByTestId("save-list").textContent).toMatch(/nothing to merge/);
+    // Design pass added an "Annotations to merge" heading inside the save-list
+    // section; the empty-state copy still lives in the same testid.
+    expect(getByTestId("save-list").textContent).toMatch(/Nothing to merge/);
   });
 });
 
@@ -93,6 +95,6 @@ describe("Save card expiry", () => {
     };
     const { getByTestId } = render(<SaveCard {...props} />);
     act(() => { vi.advanceTimersByTime(3000); });
-    expect(getByTestId("save-expired").textContent).toMatch(/approval expired/);
+    expect(getByTestId("save-expired").textContent).toMatch(/approval expired/i);
   });
 });

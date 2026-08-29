@@ -42,6 +42,8 @@ describe("P7#2 — no await between enqueues (binding)", () => {
     // We drive the pure buildStream() function (separated from the auth
     // wrapper) so the P7#2 SSE pipeline can be exercised in unit tests
     // without a session cookie.
+    const { __setTrueForgeClientForTest, FakeTrueForgeClient } = await import("../lib/trueforge");
+    __setTrueForgeClientForTest(new FakeTrueForgeClient());
     const { buildStream } = await import("../app/api/agent/stream/route");
     const resp = await buildStream({
       sessionId: "sess_fake",
@@ -53,6 +55,7 @@ describe("P7#2 — no await between enqueues (binding)", () => {
     if (resp.body) {
       await new Response(resp.body).arrayBuffer();
     }
+    __setTrueForgeClientForTest(null);
   }, 10_000);
 
   it("POST handler returns 401 when no session cookie is present", async () => {
