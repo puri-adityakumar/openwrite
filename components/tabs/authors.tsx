@@ -1,15 +1,5 @@
 "use client";
 
-// Phase 3.1 — Authors tab.
-//
-// Fetches /api/papers/:id/authors (which proxies to OpenAlex) and
-// renders the list with h-index, works, citations, institution, and
-// notable works. Cached server-side for the duration of the Node
-// process; on the client we just show whatever the server returns.
-//
-// Loading + error states are pinned so the demo never shows a broken
-// empty box.
-
 import { useEffect, useState } from "react";
 import type { OpenAlexAuthor } from "../../lib/openalex";
 
@@ -33,21 +23,21 @@ export function Authors({ paperId }: { paperId: string }) {
 
   if (error) {
     return (
-      <div data-testid="authors-tab" className="text-sm text-[var(--bad)]">
+      <div data-testid="authors-tab" className="text-sm text-[var(--color-destructive)]" role="alert">
         Authors unavailable: {error}
       </div>
     );
   }
   if (authors === null) {
     return (
-      <div data-testid="authors-tab" className="text-sm text-[var(--muted)]">
+      <div data-testid="authors-tab" className="text-sm text-[var(--color-muted-foreground)]">
         Loading authors…
       </div>
     );
   }
   if (authors.length === 0) {
     return (
-      <div data-testid="authors-tab" className="text-sm text-[var(--muted)]">
+      <div data-testid="authors-tab" className="text-sm text-[var(--color-muted-foreground)]">
         No authors listed for this paper.
       </div>
     );
@@ -61,10 +51,10 @@ export function Authors({ paperId }: { paperId: string }) {
               key={i}
               data-testid="author-card"
               data-author-name={a.name}
-              className="rounded border border-[var(--border)] bg-[var(--panel)] p-3 text-sm"
+              className="card text-sm"
             >
-              <div className="font-semibold">{a.name}</div>
-              <div className="text-[var(--muted)] text-xs">{a.error}</div>
+              <div className="font-medium text-[var(--color-foreground)]">{a.name}</div>
+              <div className="text-[var(--color-muted-foreground)] text-xs">{a.error}</div>
             </div>
           );
         }
@@ -73,19 +63,28 @@ export function Authors({ paperId }: { paperId: string }) {
             key={a.id}
             data-testid="author-card"
             data-author-name={a.display_name}
-            className="rounded border border-[var(--border)] bg-[var(--panel)] p-3 text-sm"
+            className="card text-sm"
           >
-            <div className="font-semibold">{a.display_name}</div>
+            <div className="font-medium text-[var(--color-foreground)]">{a.display_name}</div>
             {a.institution && (
-              <div className="text-[var(--muted)] text-xs">{a.institution}</div>
+              <div className="text-[var(--color-muted-foreground)] text-xs">{a.institution}</div>
             )}
-            <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
-              <div><dt className="text-[var(--muted)]">h-index</dt><dd data-testid="author-h-index">{a.h_index ?? "—"}</dd></div>
-              <div><dt className="text-[var(--muted)]">works</dt><dd>{a.works_count.toLocaleString()}</dd></div>
-              <div><dt className="text-[var(--muted)]">cited by</dt><dd>{a.cited_by_count.toLocaleString()}</dd></div>
+            <dl className="mt-3 grid grid-cols-3 gap-2 text-xs">
+              <div>
+                <dt className="text-[var(--color-muted-foreground)]">h-index</dt>
+                <dd data-testid="author-h-index" className="text-[var(--color-foreground)]">{a.h_index ?? "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-[var(--color-muted-foreground)]">works</dt>
+                <dd className="text-[var(--color-foreground)]">{a.works_count.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt className="text-[var(--color-muted-foreground)]">cited by</dt>
+                <dd className="text-[var(--color-foreground)]">{a.cited_by_count.toLocaleString()}</dd>
+              </div>
             </dl>
             {a.notable_works.length > 0 && (
-              <ul className="mt-2 text-xs text-[var(--muted)] list-disc pl-4">
+              <ul className="mt-3 text-xs text-[var(--color-muted-foreground)] list-disc pl-4 space-y-0.5">
                 {a.notable_works.map((t, j) => <li key={j}>{t}</li>)}
               </ul>
             )}

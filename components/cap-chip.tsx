@@ -1,11 +1,8 @@
 "use client";
 
-// Phase 5.1 — the Cap chip. Shows the usage the operator is guarding
-// (cost display, or token count under the "Cost —" rule) and turns
-// red when the run's usage crosses the configured cap. With no cap
-// configured it stays the plain "Cap: —" chip.
-
+import { useEffect, useRef, useState } from "react";
 import { capChip } from "../lib/cap";
+import { Pill } from "./Pill";
 
 export function CapChip({
   capUsd,
@@ -19,17 +16,42 @@ export function CapChip({
   costDisplay: string;
 }) {
   const chip = capChip({ capUsd, capTokens }, { totalTokens, costDisplay });
-  const tone = chip.exceeded
-    ? "border-[var(--bad)] text-[var(--bad)]"
-    : "border-[var(--border)] text-[var(--muted)]";
+  const tone = chip.exceeded ? "bad" : "idle";
+
+  // When the chip transitions to exceeded, surface that change to
+  // assistive tech. The pill is a status badge — the announcement
+  // happens once, on the transition, not on every render.
+  const [announcement, setAnnouncement] = useState<string | null>(null);
+  const prevExceeded = useRef(chip.exceeded);
+  useEffect(() => {
+    if (chip.exceeded && !prevExceeded.current) {
+      setAnnouncement(`Budget cap exceeded at ${chip.label}.`);
+    } else if (!chip.exceeded && prevExceeded.current) {
+      setAnnouncement("Budget cap back under threshold.");
+    }
+    prevExceeded.current = chip.exceeded;
+  }, [chip.exceeded, chip.label]);
+
   return (
-    <span
-      className={`rounded border px-2 py-1 ${tone}`}
-      data-testid="cap-chip"
-      data-exceeded={chip.exceeded ? "true" : "false"}
-      title={chip.active ? "Budget cap guard" : "No cap configured"}
-    >
-      Cap: {chip.label}
-    </span>
+    <>
+      <Pill
+        tone={tone}
+        data-testid="cap-chip"
+        data-exceeded={chip.exceeded ? "true" : "false"}
+        title={chip.active ? "Budget cap guard" : "No cap configured"}
+        style={
+          chip.exceeded
+            ? { borderColor: "var(--color-destructive)", color: "var(--color-destructive)" }
+            : undefined
+        }
+      >
+        Cap: {chip.label}
+      </Pill>
+      {/* Live region — read by screen readers on transition. Visually
+          hidden, semantically live, polite. */}
+      <div role="status" aria-live="polite" className="sr-only">
+        {announcement}
+      </div>
+    </>
   );
 }

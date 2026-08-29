@@ -44,7 +44,7 @@ describe("buildEnvContent — .env upsert", () => {
     const { buildEnvContent } = await import("../cli/init-key");
     const out = buildEnvContent(null, [["JWT_SECRET", "s3cret"]]);
     expect(out).toContain("JWT_SECRET=s3cret");
-    expect(out).toContain("Recap environment");
+    expect(out).toContain("Openwrite environment");
   });
 });
 

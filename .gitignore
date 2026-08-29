@@ -1,5 +1,9 @@
 # Local-only preference stores
 /.commandcode/
+/.nanocoder/
+/.agents/
+/design-audit/
+/skills-lock.json
 
 # Node
 /node_modules/

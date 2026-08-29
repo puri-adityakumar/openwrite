@@ -1,25 +1,432 @@
+/* ============================================================
+   Openwrite design system — derived from design-audit/brand-system.html
+   which extracted tokens from OnSyncLabs/Openwrite globals.css.
+   ============================================================ */
+
 @import "tailwindcss";
 
+/* Fonts — Raleway for labels/display, Merriweather for prose.
+   Inter is reserved for chrome (buttons, pills, inputs). */
+@font-face { font-family: "system-fallback"; src: local("system-ui"); }
+
+/* Light tokens (default). */
 :root {
-  --bg: #0b0d12;
-  --panel: #11151c;
-  --panel-2: #161c25;
-  --text: #e6e8ee;
-  --muted: #8b94a5;
-  --accent: #6ea8ff;
-  --good: #3ecf8e;
-  --warn: #f7b955;
-  --bad: #ef5b6b;
-  --border: #232a36;
+  color-scheme: light;
+  --color-background:           hsl(0 0% 100%);
+  --color-foreground:           hsl(220 9% 15%);
+  --color-primary:              hsl(220 9% 15%);
+  --color-primary-foreground:   hsl(0 0% 98%);
+  --color-secondary:            hsl(220 14% 96%);
+  --color-secondary-foreground: hsl(220 9% 15%);
+  --color-muted:                hsl(220 14% 96%);
+  --color-muted-foreground:     hsl(220 9% 46%);
+  --color-accent:               hsl(220 14% 96%);
+  --color-accent-foreground:    hsl(220 9% 15%);
+  --color-destructive:          hsl(0 84.2% 60.2%);
+  --color-destructive-foreground: hsl(210 40% 98%);
+  --color-border:               hsl(220 13% 91%);
+  --color-input:                hsl(220 13% 91%);
+  --color-ring:                 hsl(220 9% 46%);
+  --color-card:                 hsl(0 0% 100%);
+  --color-card-foreground:      hsl(220 9% 15%);
+  --color-popover:              hsl(0 0% 100%);
+  --color-popover-foreground:   hsl(220 9% 15%);
+
+  /* Legacy aliases — keep the rest of the app compiling without a sweep. */
+  --bg:        var(--color-background);
+  --panel:     var(--color-card);
+  --panel-2:   var(--color-secondary);
+  --text:      var(--color-foreground);
+  --accent-blue: hsl(220 80% 60%);
+  --good:      hsl(150 70% 45%);
+  --warn:      hsl(38 92% 60%);
+  --bad:       var(--color-destructive);
+
+  /* Type families */
+  --font-heading: 'Raleway', system-ui, sans-serif;
+  --font-body:    'Merriweather', Georgia, serif;
+  --font-sans:    system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:    ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  /* Spacing rhythm */
+  --section-y:  clamp(6rem, 8vw, 8rem);
+  --reading-w:  56rem;
+
+  /* Radii */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-full: 9999px;
+
+  /* Motion (globals.css lines 156-186) */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Dark tokens — opt-in via <html data-theme="dark"> OR prefers-color-scheme. */
+:root[data-theme="dark"], :root.dark {
+  color-scheme: dark;
+  --color-background:           hsl(220 9% 9%);
+  --color-foreground:           hsl(220 9% 98%);
+  --color-primary:              hsl(220 9% 98%);
+  --color-primary-foreground:   hsl(220 9% 9%);
+  --color-secondary:            hsl(220 13% 14%);
+  --color-secondary-foreground: hsl(220 9% 98%);
+  --color-muted:                hsl(220 13% 14%);
+  --color-muted-foreground:     hsl(220 9% 70%);
+  --color-accent:               hsl(220 13% 14%);
+  --color-accent-foreground:    hsl(220 9% 98%);
+  --color-destructive:          hsl(0 62.8% 30.6%);
+  --color-destructive-foreground: hsl(210 40% 98%);
+  --color-border:               hsl(220 13% 18%);
+  --color-input:                hsl(220 13% 18%);
+  --color-ring:                 hsl(220 9% 70%);
+  --color-card:                 hsl(220 9% 9%);
+  --color-card-foreground:      hsl(220 9% 98%);
+  --color-popover:              hsl(220 9% 9%);
+  --color-popover-foreground:   hsl(220 9% 98%);
+  --accent-blue: hsl(220 80% 65%);
+  --good:      hsl(150 70% 50%);
+  --warn:      hsl(38 92% 60%);
+  --bad:       var(--color-destructive);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --color-background:           hsl(220 9% 9%);
+    --color-foreground:           hsl(220 9% 98%);
+    --color-primary:              hsl(220 9% 98%);
+    --color-primary-foreground:   hsl(220 9% 9%);
+    --color-secondary:            hsl(220 13% 14%);
+    --color-secondary-foreground: hsl(220 9% 98%);
+    --color-muted:                hsl(220 13% 14%);
+    --color-muted-foreground:     hsl(220 9% 70%);
+    --color-accent:               hsl(220 13% 14%);
+    --color-accent-foreground:    hsl(220 9% 98%);
+    --color-destructive:          hsl(0 62.8% 30.6%);
+    --color-destructive-foreground: hsl(210 40% 98%);
+    --color-border:               hsl(220 13% 18%);
+    --color-input:                hsl(220 13% 18%);
+    --color-ring:                 hsl(220 9% 70%);
+    --color-card:                 hsl(220 9% 9%);
+    --color-card-foreground:      hsl(220 9% 98%);
+    --color-popover:              hsl(220 9% 9%);
+    --color-popover-foreground:   hsl(220 9% 98%);
+    --accent-blue: hsl(220 80% 65%);
+    --good:      hsl(150 70% 50%);
+    --warn:      hsl(38 92% 60%);
+    --bad:       var(--color-destructive);
+  }
 }
 
 html, body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-body);
+  font-weight: 400;
+  line-height: 1.7;
+  letter-spacing: -0.005em;
   margin: 0;
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-a { color: var(--accent); text-decoration: none; }
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  color: var(--color-foreground);
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  font-weight: 600;
+  margin: 0;
+}
+h1 { font-size: 2.5rem;  font-weight: 300; letter-spacing: -0.04em; }
+h2 { font-size: 2rem;    font-weight: 400; letter-spacing: -0.03em; }
+h3 { font-size: 1.5rem;  font-weight: 700; letter-spacing: -0.02em; }
+h4 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.015em; }
+
+p { color: var(--color-muted-foreground); margin: 0; }
+
+a { color: var(--accent-blue); text-decoration: none; }
 a:hover { text-decoration: underline; }
+
+button { font-family: var(--font-sans); }
+
+/* Focus ring — visible, 2px, ink color, 2px offset. The single source
+   of truth for focus styling across the whole surface. No element
+   should override this with a competing outline; the foreground color
+   sits at ~18:1 against both light and dark surfaces. */
+:focus-visible {
+  outline: 2px solid var(--color-foreground);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+/* Honor forced-colors mode (Windows High Contrast) — keep the system
+   ring, don't freeze the authored color into something invisible. */
+@media (forced-colors: active) {
+  :focus-visible { outline: 2px solid CanvasText; }
+}
+
+/* Selection */
+::selection { background: var(--color-primary); color: var(--color-primary-foreground); }
+
+/* Scrollbar — slim, ink-tinted */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--color-muted-foreground); }
+
+/* ============================================================
+   Motion — expanded for /design motion
+   ============================================================ */
+
+/* Universal transition on every interactive surface. Anything
+   with a state (background, color, border) animates over 200ms.
+   0.2s is short enough to feel responsive and long enough to
+   register as a state change. */
+:where(a, button, .btn, .input, .pill, .card, [role="tab"], [role="dialog"]) {
+  transition:
+    background-color 0.2s ease-out,
+    color 0.2s ease-out,
+    border-color 0.2s ease-out,
+    box-shadow 0.2s ease-out;
+}
+
+@keyframes rcp-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes rcp-slide-in {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes rcp-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+.animate-fade-in  { animation: rcp-fade-in  0.4s var(--ease-out) both; }
+.animate-slide-in { animation: rcp-slide-in 0.4s var(--ease-out) both; }
+/* Page-level entrance: the whole <main> fades up so the
+   route transition lands with a soft settle. */
+main { animation: rcp-fade-in 0.3s var(--ease-out) both; }
+/* Status pill "live" state — a running task breathes. */
+.pill[data-state="running"] { animation: rcp-pulse 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  :where(a, button, .btn, .input, .pill, .card, [role="tab"], [role="dialog"]) {
+    transition-duration: 0.01ms;
+  }
+  .animate-fade-in, .animate-slide-in, main { animation-duration: 0.01ms; animation-iteration-count: 1; }
+  .pill[data-state="running"] { animation: none; }
+}
+/* Light on dark needs compensation — Raleway 300 reads optically
+   thinner on dark surfaces. Widen the letter-spacing and bump the
+   weight one step on the hero. */
+[data-theme="dark"] h1 { letter-spacing: -0.035em; font-weight: 400; }
+
+/* ============================================================
+   Component primitives — used across the app
+   ============================================================ */
+
+/* Eyebrow / kicker pill (brand-system: 13-14px sans, 1px border, 24px above heads).
+   In dark mode Raleway 600 at 12px is the floor — the a11y pass raised
+   the hero h1 to 400 but the kicker also needs the same lift, so
+   we override the weight per-theme. */
+.rcp-eyebrow {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  padding: 0.25rem 0.75rem;
+  font-family: var(--font-heading);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+[data-theme="dark"] .rcp-eyebrow { font-weight: 700; letter-spacing: 0.1em; }
+.rcp-eyebrow-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--good); }
+
+/* Buttons — 44×44 minimum tap target (WCAG 2.5.5, Apple HIG).
+   The .btn-secondary / .btn-ghost / .btn-destructive compact variants
+   override the visual padding but the box still measures 44px tall.
+
+   State table (the 9 states):
+     idle        — default fill, no transform
+     hover       — surface shift to --muted (or opacity for primary)
+     active      — scale 0.98, faster transition
+     focus-visible — :focus-visible rule above
+     disabled    — opacity 0.5, cursor not-allowed, but stays in the tab order
+                  (no pointer-events:none) so the user can read WHY it's
+                  disabled via the surrounding text.
+     busy/loading — opacity 0.7 + spinner; original label preserved
+     success     — inherited from text content (no separate class)
+     error       — border swaps to --color-destructive
+     overflow    — not applicable to button itself */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  border: 1px solid transparent;
+  text-decoration: none;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.1s ease, opacity 0.2s ease;
+  min-height: 44px;
+  min-width: 44px;
+  line-height: 1;
+  touch-action: manipulation;
+  user-select: none;
+}
+.btn:hover { transform: translateY(-1px); }
+.btn:active { transform: scale(0.98); transition-duration: 0.05s; }
+.btn-primary {
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+}
+.btn-primary:hover { opacity: 0.92; }
+.btn-secondary {
+  background: transparent;
+  border-color: var(--color-border);
+  color: var(--color-foreground);
+}
+.btn-secondary:hover { background: var(--color-muted); }
+.btn-ghost {
+  background: var(--color-secondary);
+  color: var(--color-secondary-foreground);
+}
+.btn-ghost:hover { background: var(--color-muted); }
+.btn-destructive {
+  background: transparent;
+  border-color: var(--color-destructive);
+  color: var(--color-destructive);
+}
+.btn-destructive:hover { background: hsl(0 84% 60% / 0.1); }
+
+/* Disabled — the button stays focusable, no pointer-events:none.
+   The reason for being disabled lives in the surrounding copy
+   (placeholder, helper text, or sibling error). */
+.btn[disabled], .btn[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+.btn[disabled]:hover { transform: none; opacity: 0.5; }
+
+/* Busy / loading state — set aria-busy="true" on the button to use. */
+.btn[aria-busy="true"] {
+  cursor: progress;
+  opacity: 0.7;
+}
+.btn[aria-busy="true"]:hover { transform: none; opacity: 0.7; }
+
+/* Tiny chrome button — 28px tall, used for end-of-card utility
+   controls (env-banner Copy, reader Close, tour modal Close) that
+   sit at the corner of a card with no neighboring tap targets. The
+   28px target is justified by the WCAG 2.5.5 spacing exception
+   (no overlapping 24px circle), but the 3-property inline style was
+   repeated 3 times — that drift is the actual fix. */
+.btn-tiny {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0.25rem 0.5rem;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-foreground);
+  cursor: pointer;
+  min-height: 28px;
+}
+.btn-tiny:hover { background: var(--color-muted); }
+
+/* Spinner — sibling of the label, hidden when the button is idle. */
+.btn-spinner {
+  width: 1em; height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  display: inline-block;
+  animation: btn-spin 0.6s linear infinite;
+  vertical-align: -0.125em;
+}
+@keyframes btn-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .btn-spinner { animation-duration: 6s; }
+}
+
+/* Inputs — 16px font-size minimum to avoid iOS Safari auto-zoom on
+   focus, 44×44 tap target via padding. Focus uses the global
+   :focus-visible rule; no element-level override. */
+.input {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  color: var(--color-foreground);
+  background: var(--color-background);
+  border: 1px solid var(--color-input);
+  border-radius: var(--radius-md);
+  min-height: 44px;
+  box-sizing: border-box;
+}
+.input[aria-invalid="true"] {
+  border-color: var(--color-destructive);
+}
+
+/* Card surface — border + a subtle elevation lift that respects
+   the theme. The page itself is --color-background, so a card on
+   --color-card needs *some* separation or it disappears in light
+   mode. In dark mode, the same card lives one step lighter than
+   the page and reads without any extra help. */
+.card {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+}
+:root:not([data-theme="dark"]) .card {
+  /* Light mode: a hairline ink shadow + a soft cool diffusion so
+     the card lifts off the page without a heavy shadow. */
+  box-shadow:
+    0 1px 0 hsl(220 9% 9% / 0.04),
+    0 12px 32px -8px hsl(220 9% 9% / 0.08),
+    inset 0 1px 0 hsl(0 0% 100% / 0.6);
+}
+:root[data-theme="dark"] .card {
+  /* Dark mode: the card already lives on a slightly lighter
+     surface; a faint inner highlight gives it form without glow. */
+  box-shadow: inset 0 1px 0 hsl(220 9% 98% / 0.04);
+}
+
+/* Status pill */
+.pill {
+  display: inline-flex; align-items: center; gap: 0.375rem;
+  padding: 0.125rem 0.625rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background: var(--color-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  color: var(--color-foreground);
+}
+.pill-dot { width: 0.375rem; height: 0.375rem; border-radius: 50%; }
+.pill-dot.good { background: var(--good); }
+.pill-dot.warn { background: var(--warn); }
+.pill-dot.bad  { background: var(--color-destructive); }
+.pill-dot.idle { background: var(--color-muted-foreground); }
+.pill-dot.accent { background: var(--accent-blue); }
+
+/* Page container */
+.page {
+  max-width: var(--reading-w);
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+.page-wide { max-width: 80rem; margin: 0 auto; padding: 0 1.5rem; }

@@ -55,7 +55,7 @@ describe("Tour — modal accessibility (Qodo review #5, #6)", () => {
     const modal = getByTestId("tour-modal");
     const labelledBy = modal.getAttribute("aria-labelledby");
     expect(labelledBy).toBeTruthy();
-    expect(document.getElementById(labelledBy!)?.textContent).toContain("How Recap works");
+    expect(document.getElementById(labelledBy!)?.textContent).toContain("How Openwrite works");
   });
 
   it("moves focus into the modal on open, traps Tab, and restores it on close", async () => {

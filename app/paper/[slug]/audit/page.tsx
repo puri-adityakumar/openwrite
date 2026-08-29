@@ -47,12 +47,16 @@ export default async function PaperAuditPage({
           <a
             href={`/paper/${paper.slug}/export`}
             data-testid="audit-export-link"
-            className="rounded border border-[var(--border)] px-3 py-1 text-sm hover:bg-[var(--panel-2)]"
+            className="btn btn-secondary"
+            style={{ minHeight: 44, padding: "0.5rem 0.875rem" }}
           >
             Export as markdown
           </a>
-          <a href={`/paper/${paper.slug}`} className="text-sm text-[var(--muted)] underline">
-            ◀ Cockpit
+          <a
+            href={`/paper/${paper.slug}`}
+            className="text-xs text-[var(--color-muted-foreground)] no-underline hover:underline"
+          >
+            ← Cockpit
           </a>
         </>
       }

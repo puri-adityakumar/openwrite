@@ -1,16 +1,5 @@
 "use client";
 
-// Phase 3 — Cockpit client wrapper.
-//
-// Owns: tab state, selected claim (for the Reader), Ask composer state,
-// and the heartbeat clock. Renders the four surfaces (Trail, Coverage,
-// Status row, Pulse) + the right-column Tabs + the Reader + the Ask
-// composer.
-//
-// Used by both the seed path (Phase 1.3) and the live path (Phase 2);
-// the parent passes the surfaces as props and a stream URL for the
-// SSE store.
-
 import { useEffect, useState } from "react";
 import { Pulse } from "./pulse";
 import { Tabs, type TabId } from "./tabs";
@@ -24,14 +13,15 @@ import { PublishCard } from "./gates/publish-card";
 import { SaveCard } from "./gates/save-card";
 import { HaltButton } from "./halt-button";
 import { CapChip } from "./cap-chip";
+import { Pill } from "./Pill";
 import type { Claim } from "../lib/claims";
 import type { LiveState, TrailPill } from "../lib/event-reducer";
 
-function pillTone(state: string): string {
-  if (state === "done") return "bg-[var(--good)] text-black";
-  if (state === "running") return "bg-[var(--warn)] text-black animate-pulse";
-  if (state === "error") return "bg-[var(--bad)] text-white";
-  return "bg-[var(--panel-2)] text-[var(--muted)]";
+function pillTone(state: string): "good" | "warn" | "bad" | "idle" {
+  if (state === "done") return "good";
+  if (state === "running") return "warn";
+  if (state === "error") return "bad";
+  return "idle";
 }
 
 function densityGlyph(d: number): string {
@@ -42,7 +32,7 @@ function densityGlyph(d: number): string {
 }
 
 function statusVerb(state: LiveState): string {
-  if (state.status === "queued") return "Queued — waiting for first turn…";
+  if (state.status === "queued") return "Queued — waiting for first turn.";
   if (state.status === "running") return `Auditing — ${state.pulse.length} events streamed.`;
   if (state.status === "paused") {
     const gates = state.gates.length;
@@ -70,7 +60,6 @@ export type CockpitClientProps = {
   summary: SummaryData;
   pdfUrl: string | null;
   heartbeatEnabled?: boolean;
-  // Phase 5.1 — halt + cap state from the papers row.
   halted?: boolean;
   capUsd?: number | null;
   capTokens?: number | null;
@@ -116,14 +105,18 @@ export function CockpitClient({
   }, [heartbeatEnabled]);
 
   return (
-    <div className="max-w-6xl mx-auto p-6" data-testid="cockpit">
-      <div className="flex items-center justify-between">
+    <div className="page-wide py-8 md:py-10" data-testid="cockpit">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <a href="/dashboard" className="text-sm text-[var(--muted)]">◀ Dashboard</a>
-          <h1 className="text-xl font-semibold mt-1">{slug}</h1>
-          <p className="text-xs text-[var(--muted)]">{title}</p>
+          <a href="/dashboard" className="text-xs text-[var(--color-muted-foreground)] no-underline hover:underline">
+            ← Dashboard
+          </a>
+          <h1 className="mt-2 text-2xl md:text-3xl">{title}</h1>
+          <p className="text-xs font-mono text-[var(--color-muted-foreground)] mt-1">
+            {slug}
+          </p>
         </div>
-        <div className="flex items-center gap-2 text-sm text-[var(--muted)]">
+        <div className="flex items-center gap-2">
           <HaltButton paperId={paperId} status={liveState.status} halted={halted} />
           <CapChip
             capUsd={capUsd}
@@ -133,40 +126,37 @@ export function CockpitClient({
           />
         </div>
       </div>
-      <p className="mt-2 text-sm" data-testid="status-row">
-        <span className="text-[var(--muted)]">Status: </span>
-        <span data-testid="status-verb">{statusVerb(liveState)}</span>
-        <span className="ml-2 text-[var(--muted)]">
+
+      <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm" data-testid="status-row">
+        <Pill tone={pillTone(liveState.status)}>
+          <span data-testid="status-verb">{statusVerb(liveState)}</span>
+        </Pill>
+        <span className="text-xs text-[var(--color-muted-foreground)] font-mono">
           tokens {liveState.metrics.totalTokens.toLocaleString()}
         </span>
         {liveState.sandboxId && (
-          <span className="ml-2 text-[var(--muted)]" data-testid="sandbox-id">
+          <span className="text-xs text-[var(--color-muted-foreground)] font-mono" data-testid="sandbox-id">
             sandbox {liveState.sandboxId}
           </span>
         )}
-      </p>
+      </div>
 
-      <section className="mt-6">
-        <h2 className="text-sm font-medium text-[var(--muted)]">Trail</h2>
-        <ol className="mt-2 flex flex-wrap gap-2" data-testid="trail-pills">
+      <section className="mt-8">
+        <span className="rcp-eyebrow">Trail</span>
+        <ol className="mt-3 flex flex-wrap gap-2" data-testid="trail-pills">
           {pills.map((p) => (
-            <li
-              key={p.id}
-              className={"rounded-full px-3 py-1 text-sm " + pillTone(p.state)}
-              data-state={p.state}
-              data-pill={p.id}
-            >
-              {p.label}
+            <li key={p.id} data-state={p.state} data-pill={p.id}>
+              <Pill tone={pillTone(p.state)}>{p.label}</Pill>
             </li>
           ))}
         </ol>
       </section>
 
-      <section className="mt-6">
-        <h2 className="text-sm font-medium text-[var(--muted)]">Coverage</h2>
-        <div className="mt-2 font-mono text-2xl tracking-widest" data-testid="coverage-grid">
+      <section className="mt-8">
+        <span className="rcp-eyebrow">Coverage</span>
+        <div className="mt-3 font-mono text-2xl tracking-widest text-[var(--color-foreground)]" data-testid="coverage-grid">
           {coverage.length === 0 ? (
-            <span className="text-[var(--muted)] text-sm">— no coverage yet —</span>
+            <span className="text-sm text-[var(--color-muted-foreground)]">No coverage yet.</span>
           ) : (
             coverage.map((c) => (
               <span key={c.page} title={`Page ${c.page}: ${c.density.toFixed(2)}`}>
@@ -175,30 +165,24 @@ export function CockpitClient({
             ))
           )}
         </div>
-        <p className="mt-1 text-xs text-[var(--muted)]">
+        <p className="mt-2 text-xs text-[var(--color-muted-foreground)]">
           ░ sparse · ▒ light · ▓ medium · █ dense (denser = more cited)
         </p>
       </section>
 
       {liveState.status === "paused" && (
-        <section className="mt-6" data-testid="gate-panel">
+        <section className="mt-8" data-testid="gate-panel">
           <VerifyGatePanel
             paperId={paperId}
             slug={slug}
             title={title}
-            onAllowed={() => {
-              // The card posted allow; flip the cockpit back to running
-              // by waiting for the resumed turn's first event. The
-              // simplest UX is to reload the page so the SSE stream
-              // reattaches and the paper status flips to "running".
-              window.location.reload();
-            }}
+            onAllowed={() => { window.location.reload(); }}
             onDenied={() => { window.location.reload(); }}
           />
         </section>
       )}
 
-      <section className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <section className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">
           <Tabs
             slug={slug}
@@ -208,23 +192,21 @@ export function CockpitClient({
               summary: <Summary data={summary} />,
               claims: <ClaimsLoader paperId={paperId} onOpenClaim={setOpenClaim} />,
               authors: <Authors paperId={paperId} />,
-              audit: <div className="text-sm text-[var(--muted)]">See <a className="text-[var(--accent)] underline" href={`/paper/${slug}/audit`}>audit timeline</a>.</div>,
+              audit: <div className="text-sm text-[var(--color-muted-foreground)]">See <a className="text-[var(--accent-blue)] underline" href={`/paper/${slug}/audit`}>audit timeline</a>.</div>,
             }}
           />
         </div>
-        <div className="rounded border border-[var(--border)] bg-[var(--panel)] p-4">
-          <h2 className="text-sm font-medium text-[var(--muted)]">Pulse</h2>
-          <Pulse state={liveState} lastHeartbeat={lastHeartbeat} />
+        <div className="card">
+          <span className="rcp-eyebrow">Pulse</span>
+          <div className="mt-3">
+            <Pulse state={liveState} lastHeartbeat={lastHeartbeat} />
+          </div>
         </div>
       </section>
 
       <Ask
         paperId={paperId}
         onCite={async (claimId) => {
-          // Qodo #2: clicking a citation in the answer must open the
-          // Reader at the cited claim, completing the answer-to-Reader
-          // loop. We fetch the claim (the CockpitClient owns the
-          // reader state; Ask just emits the click).
           if (openClaim?.id === claimId) return;
           try {
             const r = await fetch(`/api/papers/${paperId}/claims`);
@@ -236,7 +218,7 @@ export function CockpitClient({
               setTab("claims");
             }
           } catch {
-            // best-effort: the user can still click the Claims row
+            /* best-effort: user can still click the Claims row */
           }
         }}
       />
@@ -253,8 +235,6 @@ export function CockpitClient({
   );
 }
 
-// Lazy-loads claims for the Claims tab. Kept inline so the cockpit
-// can stay a single client component.
 function ClaimsLoader({
   paperId,
   onOpenClaim,
@@ -275,16 +255,11 @@ function ClaimsLoader({
       .catch((e: Error) => { if (!cancelled) setError(e.message); });
     return () => { cancelled = true; };
   }, [paperId]);
-  if (error) return <div className="text-sm text-[var(--bad)]">Claims error: {error}</div>;
-  if (claims === null) return <div className="text-sm text-[var(--muted)]">Loading claims…</div>;
+  if (error) return <div className="text-sm text-[var(--color-destructive)]" role="alert">Claims error: {error}</div>;
+  if (claims === null) return <div className="text-sm text-[var(--color-muted-foreground)]">Loading claims…</div>;
   return <Claims claims={claims} onOpenClaim={onOpenClaim} />;
 }
 
-// Phase 4.2 — Verify gate panel. Fetches the paper's most-recent
-// pending gate, composes the G1 props from the paper row + payload,
-// and renders the Verify card. The card calls back to the approve
-// route and triggers a reload on success so the live SSE stream
-// reattaches to the resumed turn.
 function VerifyGatePanel({
   paperId,
   slug,
@@ -312,18 +287,10 @@ function VerifyGatePanel({
       .catch((e: Error) => { if (!cancelled) setError(e.message); });
     return () => { cancelled = true; };
   }, [paperId]);
-  if (error) return <div data-testid="gate-error" className="text-sm text-[var(--bad)]">Gate error: {error}</div>;
-  if (gate === null) return <div data-testid="gate-empty" className="text-sm text-[var(--muted)]">No pending gate.</div>;
-  // Derive G1 props from the gate payload + paper metadata. The page
-  // (not this client) owns the full provenance block, so the cockpit
-  // fills the placeholder fields from the gate payload when the page
-  // hasn't supplied them yet.
+  if (error) return <div data-testid="gate-error" className="text-sm text-[var(--color-destructive)]" role="alert">Gate error: {error}</div>;
+  if (gate === null) return <div data-testid="gate-empty" className="text-sm text-[var(--color-muted-foreground)]">No pending gate.</div>;
+
   const payload = (gate.payload as Record<string, unknown>) ?? {};
-  // Qodo #10 — repoOwner must come from the wire payload (the
-  // verifier upstream). When it's missing, the card cannot satisfy
-  // the identity confirm: we pass an empty expectedOwner so the
-  // typed-match check never succeeds and the Allow button stays
-  // disabled until the upstream supplies the real owner.
   const expectedOwner =
     typeof payload.repoOwner === "string" && payload.repoOwner.length > 0
       ? payload.repoOwner
@@ -339,10 +306,6 @@ function VerifyGatePanel({
     repoCommitSha: typeof payload.repoCommitSha === "string" ? payload.repoCommitSha : "0000000",
   };
   const intent = typeof payload.intent === "string" ? payload.intent : "Run the paper's verification command in a disposable sandbox.";
-  // Qodo #11 — read the budget + envelope from the wire payload.
-  // Hardcoded demo values misrepresent the real sandbox; if the
-  // payload doesn't supply a value, render "—" so the operator
-  // sees the spec is not specified rather than trusting fiction.
   const budget = {
     cpu: typeof payload.cpu === "string" ? payload.cpu : "—",
     ram: typeof payload.ram === "string" ? payload.ram : "—",
@@ -361,10 +324,6 @@ function VerifyGatePanel({
     mounts: typeof payload.mounts === "string" ? payload.mounts : "—",
     ephemeral: typeof payload.ephemeral === "string" ? payload.ephemeral : "—",
   };
-  // Data scope + persistence are static copy from the spec (the
-  // contract is fixed: the sandbox can never see ~/.ssh, etc.).
-  // But they can be overridden by the payload if the verifier
-  // surfaces a tighter set.
   const dataScope =
     typeof payload.dataScope === "string"
       ? payload.dataScope
@@ -409,10 +368,6 @@ function VerifyGatePanel({
   const askReason = (): string | undefined =>
     typeof window !== "undefined" ? window.prompt("Reason (optional):") ?? undefined : undefined;
 
-  // Qodo #7 — route to the right card by gate.kind. The default is
-  // verify (the only kind emitted today), but publish/save cards
-  // exist and are reachable as soon as a real adapter writes one
-  // with `gateKind: "publish" | "save"` in the event payload.
   const kind = String(gate.kind ?? "verify");
   if (kind === "publish") {
     const beforeNum = Number(payload.beforeClaimed ?? payload.claimedValue ?? 0);
@@ -458,4 +413,3 @@ function VerifyGatePanel({
     />
   );
 }
-

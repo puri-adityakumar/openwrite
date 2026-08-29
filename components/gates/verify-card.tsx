@@ -23,6 +23,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { deriveRiskFlags, highRiskCount, type RiskFlag } from "../../lib/risk-flags";
+import { Pill } from "../Pill";
 
 export type VerifyCardProps = {
   // The gate row from /api/agent/gates/[id] (or directly from
@@ -168,25 +169,30 @@ export function VerifyCard(props: VerifyCardProps) {
     <article
       data-testid="verify-card"
       data-gate-id={gate.id}
-      className="rounded border-2 border-[var(--bad)] bg-[var(--panel)] p-4"
+      className="card"
+      style={{ borderColor: "var(--color-destructive)", borderWidth: 2 }}
     >
       {/* Chrome header */}
       <header
-        className="flex items-center justify-between border-b border-[var(--border)] pb-2"
+        className="flex items-center justify-between border-b border-[var(--color-border)] pb-2"
         data-testid="verify-header"
       >
         <div className="text-sm font-medium">
-          ◀ Verify gate · <span data-testid="verify-severity">irreversible</span> ·{" "}
+          <span className="rcp-eyebrow" style={{ borderColor: "var(--color-destructive)", color: "var(--color-destructive)" }}>
+            <span className="rcp-eyebrow-dot" style={{ background: "var(--color-destructive)" }} aria-hidden="true" />
+            Verify gate
+          </span>{" "}
+          <span data-testid="verify-severity">irreversible</span>{" · "}
           <span data-testid="verify-countdown">expires in {countdown}</span>
         </div>
-        <div className="text-xs text-[var(--muted)]" data-testid="verify-tool">
+        <div className="text-xs text-[var(--color-muted-foreground)] font-mono" data-testid="verify-tool">
           tool: {gate.tool_name}
         </div>
       </header>
 
       {/* G1 #1 — Provenance */}
-      <section data-testid="g1-provenance" className="mt-3">
-        <h3 className="text-xs font-semibold text-[var(--muted)]">1 · Provenance</h3>
+      <section data-testid="g1-provenance" className="mt-4">
+        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">1 · Provenance</h4>
         <dl className="mt-1 grid grid-cols-[8rem_1fr] gap-x-2 text-sm">
           {props.provenance.arxivId && (<>
             <dt>arXiv ID</dt><dd>{props.provenance.arxivId}</dd>
@@ -197,33 +203,33 @@ export function VerifyCard(props: VerifyCardProps) {
           <dt>Source</dt>
           <dd className="break-all">
             {props.provenance.sourceUrl}{" "}
-            <span className="text-[var(--muted)]">(sha256 {props.provenance.sourceSha256.slice(0, 12)}…)</span>
+            <span className="text-[var(--color-muted-foreground)]">(sha256 {props.provenance.sourceSha256.slice(0, 12)}…)</span>
           </dd>
           <dt>Repo</dt>
           <dd className="break-all">
             {props.provenance.repoUrl}{" "}
-            <span className="text-[var(--muted)]">@{props.provenance.repoCommitSha.slice(0, 7)}</span>
+            <span className="text-[var(--color-muted-foreground)]">@{props.provenance.repoCommitSha.slice(0, 7)}</span>
           </dd>
         </dl>
       </section>
 
       {/* G1 #2 — Intent */}
-      <section data-testid="g1-intent" className="mt-3">
-        <h3 className="text-xs font-semibold text-[var(--muted)]">2 · Declared intent</h3>
-        <p className="mt-1 text-sm">{props.intent}</p>
+      <section data-testid="g1-intent" className="mt-4">
+        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">2 · Declared intent</h4>
+        <p className="mt-1 text-sm text-[var(--color-foreground)]">{props.intent}</p>
       </section>
 
       {/* G1 #3 — Command */}
-      <section data-testid="g1-command" className="mt-3">
-        <h3 className="text-xs font-semibold text-[var(--muted)]">3 · Command (verbatim)</h3>
-        <pre className="mt-1 rounded bg-[var(--panel-2)] p-2 text-xs font-mono whitespace-pre-wrap break-all">
+      <section data-testid="g1-command" className="mt-4">
+        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">3 · Command (verbatim)</h4>
+        <pre className="mt-1 rounded bg-[var(--color-secondary)] p-2 text-xs font-mono whitespace-pre-wrap break-all text-[var(--color-foreground)]">
           {String(gate.payload?.command ?? gate.tool_name)}
         </pre>
       </section>
 
       {/* G1 #4 — Resource budget */}
-      <section data-testid="g1-budget" className="mt-3">
-        <h3 className="text-xs font-semibold text-[var(--muted)]">4 · Resource budget</h3>
+      <section data-testid="g1-budget" className="mt-4">
+        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">4 · Resource budget</h4>
         <ul className="mt-1 grid grid-cols-2 gap-x-4 text-sm">
           <li>CPU: {props.budget.cpu}</li>
           <li>RAM: {props.budget.ram}</li>
@@ -235,8 +241,8 @@ export function VerifyCard(props: VerifyCardProps) {
       </section>
 
       {/* G1 #5 — Sandbox envelope */}
-      <section data-testid="g1-envelope" className="mt-3">
-        <h3 className="text-xs font-semibold text-[var(--muted)]">5 · Sandbox envelope</h3>
+      <section data-testid="g1-envelope" className="mt-4">
+        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">5 · Sandbox envelope</h4>
         <ul className="mt-1 grid grid-cols-2 gap-x-4 text-sm">
           <li>Hypervisor: {props.envelope.hypervisor}</li>
           <li>Base image: <span className="font-mono text-xs">{props.envelope.baseImageDigest}</span></li>
@@ -248,60 +254,62 @@ export function VerifyCard(props: VerifyCardProps) {
       </section>
 
       {/* G1 #6 — Risk flags (auto) */}
-      <section data-testid="g1-risk-flags" className="mt-3">
-        <h3 className="text-xs font-semibold text-[var(--muted)]">
+      <section data-testid="g1-risk-flags" className="mt-4">
+        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)] flex items-center gap-2">
           6 · Risk flags (auto)
           {riskN > 0 && (
-            <span data-testid="verify-risk-count" className="ml-2 rounded bg-[var(--bad)] px-1 text-white">
+            <Pill tone="bad" data-testid="verify-risk-count" style={{ borderColor: "var(--color-destructive)", color: "var(--color-destructive)" }}>
               {riskN} high
-            </span>
+            </Pill>
           )}
-        </h3>
+        </h4>
         <ul className="mt-1 grid grid-cols-2 gap-x-4 text-sm">
           {riskFlags.map((f) => (
-            <li key={f.key} data-testid={`risk-flag-${f.key}`} data-present={f.present ? "true" : "false"}>
-              {f.present ? "⚠" : "·"} {f.label}
-              {f.detail && <span className="ml-1 text-[var(--muted)]">— {f.detail}</span>}
+            <li key={f.key} data-testid={`risk-flag-${f.key}`} data-present={f.present ? "true" : "false"} className={f.present ? "text-[var(--color-foreground)]" : "text-[var(--color-muted-foreground)]"}>
+              <span className="font-mono mr-1" aria-hidden="true">{f.present ? "!" : "·"}</span>
+              {f.label}
+              {f.detail && <span className="ml-1 text-[var(--color-muted-foreground)]">— {f.detail}</span>}
             </li>
           ))}
         </ul>
       </section>
 
       {/* G1 #7 — Data scope */}
-      <section data-testid="g1-data-scope" className="mt-3">
-        <h3 className="text-xs font-semibold text-[var(--muted)]">7 · Data scope</h3>
-        <p className="mt-1 text-sm">{props.dataScope}</p>
+      <section data-testid="g1-data-scope" className="mt-4">
+        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">7 · Data scope</h4>
+        <p className="mt-1 text-sm text-[var(--color-foreground)]">{props.dataScope}</p>
       </section>
 
       {/* G1 #8 — Persistence */}
-      <section data-testid="g1-persistence" className="mt-3">
-        <h3 className="text-xs font-semibold text-[var(--muted)]">8 · Persistence</h3>
-        <p className="mt-1 text-sm">{props.persistence}</p>
+      <section data-testid="g1-persistence" className="mt-4">
+        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">8 · Persistence</h4>
+        <p className="mt-1 text-sm text-[var(--color-foreground)]">{props.persistence}</p>
       </section>
 
       {/* G1 #9 — Kill switch */}
-      <section data-testid="g1-kill-switch" className="mt-3">
-        <h3 className="text-xs font-semibold text-[var(--muted)]">9 · Kill switch</h3>
+      <section data-testid="g1-kill-switch" className="mt-4">
+        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">9 · Kill switch</h4>
         <button
           type="button"
           onClick={props.onKillSwitch}
           data-testid="verify-kill"
           disabled={decided}
-          className="mt-1 rounded border border-[var(--bad)] px-2 py-1 text-xs text-[var(--bad)] disabled:opacity-50"
+          className="btn btn-destructive mt-1"
+          style={{ minHeight: 44, padding: "0.625rem 0.875rem" }}
         >
           ⛔ Abort pending tool call
         </button>
       </section>
 
       {/* G1 #10 — Identity confirm */}
-      <section data-testid="g1-identity" className="mt-3">
-          <h3 className="text-xs font-semibold text-[var(--muted)]">
-            10 · Identity confirm — type{" "}
-            <code className="font-mono">
-              {expectedOwner || "(repo owner not supplied — Allow is disabled)"}
-            </code>{" "}
-            and hold Allow for 3s
-          </h3>
+      <section data-testid="g1-identity" className="mt-4">
+        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">
+          10 · Identity confirm — type{" "}
+          <code className="font-mono text-[var(--color-foreground)]">
+            {expectedOwner || "(repo owner not supplied — Allow is disabled)"}
+          </code>{" "}
+          and hold Allow for 3s
+        </h4>
         <input
           type="text"
           value={typedOwner}
@@ -309,17 +317,18 @@ export function VerifyCard(props: VerifyCardProps) {
           placeholder={expectedOwner}
           disabled={decided}
           data-testid="verify-owner-input"
-          className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg)] px-2 py-1 text-sm font-mono"
+          className="input mt-1.5"
+          style={{ fontFamily: "var(--font-mono)" }}
         />
-        <p className="mt-1 text-xs text-[var(--muted)]">
-          {ownerMatch ? "✓ owner matches" : `type the exact repo owner to enable Allow`}
+        <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
+          {ownerMatch ? "Owner matches." : "Type the exact repo owner to enable Allow."}
         </p>
       </section>
 
       {/* G1 #11 — Liability */}
-      <section data-testid="g1-liability" className="mt-3">
-        <h3 className="text-xs font-semibold text-[var(--muted)]">11 · Liability</h3>
-        <p className="mt-1 text-sm">
+      <section data-testid="g1-liability" className="mt-4">
+        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">11 · Liability</h4>
+        <p className="mt-1 text-sm text-[var(--color-foreground)]">
           By allowing, you authorise the agent to execute the command above inside a
           disposable sandbox. The agent has no access to your home directory, browser
           profile, or any secrets. You may deny at any time; the affected claims will be
@@ -328,7 +337,7 @@ export function VerifyCard(props: VerifyCardProps) {
       </section>
 
       {/* Actions */}
-      <footer className="mt-4 flex items-center gap-2 border-t border-[var(--border)] pt-3">
+      <footer className="mt-6 flex items-center gap-2 border-t border-[var(--color-border)] pt-3 flex-wrap">
         <button
           type="button"
           onMouseDown={() => ownerMatch && !decided && setHolding(true)}
@@ -339,16 +348,28 @@ export function VerifyCard(props: VerifyCardProps) {
           disabled={!ownerMatch || decided}
           data-testid="verify-allow"
           data-hold-progress={holdProgress}
-          className="relative overflow-hidden rounded bg-[var(--good)] px-3 py-1 text-sm font-medium text-black disabled:opacity-40"
+          className="relative overflow-hidden"
+          style={{
+            background: "var(--good)",
+            color: "black",
+            padding: "0.5rem 1rem",
+            fontFamily: "var(--font-sans)",
+            fontSize: "0.875rem",
+            fontWeight: 500,
+            borderRadius: "var(--radius-md)",
+            border: "1px solid transparent",
+            cursor: (!ownerMatch || decided) ? "not-allowed" : "pointer",
+            opacity: (!ownerMatch || decided) ? 0.4 : 1,
+          }}
         >
           {holding && (
             <span
-              className="absolute inset-y-0 left-0 bg-black/30"
-              style={{ width: `${holdProgress}%` }}
+              className="absolute inset-y-0 left-0"
+              style={{ width: `${holdProgress}%`, background: "rgba(0,0,0,0.3)" }}
               data-testid="verify-allow-fill"
             />
           )}
-          <span className="relative">
+          <span style={{ position: "relative" }}>
             {decided ? "Decided" : holding ? `Hold… ${Math.round(holdProgress)}%` : "Allow"}
           </span>
         </button>
@@ -357,7 +378,8 @@ export function VerifyCard(props: VerifyCardProps) {
           onClick={props.onEdit}
           disabled={decided}
           data-testid="verify-edit"
-          className="rounded border border-[var(--border)] px-3 py-1 text-sm disabled:opacity-40"
+          className="btn btn-secondary"
+          style={{ minHeight: 44, padding: "0.625rem 0.875rem" }}
         >
           Edit
         </button>
@@ -366,13 +388,14 @@ export function VerifyCard(props: VerifyCardProps) {
           onClick={props.onDeny}
           disabled={decided}
           data-testid="verify-deny"
-          className="rounded border border-[var(--bad)] px-3 py-1 text-sm text-[var(--bad)] disabled:opacity-40"
+          className="btn btn-destructive"
+          style={{ minHeight: 44, padding: "0.625rem 0.875rem" }}
         >
           Deny
         </button>
         {expired && (
-          <span data-testid="verify-expired" className="ml-2 text-xs text-[var(--bad)]">
-            approval expired — restart verification.
+          <span data-testid="verify-expired" className="ml-2 text-xs text-[var(--color-destructive)]" role="status">
+            Approval expired — restart verification.
           </span>
         )}
       </footer>

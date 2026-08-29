@@ -60,55 +60,63 @@ export function PublishCard(props: PublishCardProps) {
     <article
       data-testid="publish-card"
       data-gate-id={gate.id}
-      className="rounded border-2 border-[var(--bad)] bg-[var(--panel)] p-4"
+      className="card"
+      style={{ borderColor: "var(--color-destructive)", borderWidth: 2 }}
     >
       <header
-        className="flex items-center justify-between border-b border-[var(--border)] pb-2"
+        className="flex items-center justify-between border-b border-[var(--color-border)] pb-2"
         data-testid="publish-header"
       >
         <div className="text-sm font-medium">
-          ◀ Publish gate ·{" "}
-          <span data-testid="publish-severity" data-severity="irreversible">
-            irreversible
+          <span className="rcp-eyebrow" style={{ borderColor: "var(--color-destructive)", color: "var(--color-destructive)" }}>
+            <span className="rcp-eyebrow-dot" style={{ background: "var(--color-destructive)" }} aria-hidden="true" />
+            Publish gate
           </span>{" "}
-          · <span data-testid="publish-countdown">expires in {countdown}</span>
+          <span data-testid="publish-severity" data-severity="irreversible">irreversible</span>{" · "}
+          <span data-testid="publish-countdown">expires in {countdown}</span>
         </div>
       </header>
 
-      <section data-testid="publish-diff" className="mt-3">
-        <h3 className="text-xs font-semibold text-[var(--muted)]">Diff</h3>
-        <div className="mt-1 grid grid-cols-2 gap-x-4 text-sm">
+      <section data-testid="publish-diff" className="mt-4">
+        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">Diff</h4>
+        <div className="mt-2 grid grid-cols-2 gap-x-4 text-sm">
           <div data-testid="publish-before">
-            <div className="text-[var(--muted)]">{props.before.label}</div>
-            <div className="font-mono text-base">{props.before.value}</div>
+            <div className="text-[var(--color-muted-foreground)]">{props.before.label}</div>
+            <div className="font-mono text-base text-[var(--color-foreground)]">{props.before.value}</div>
           </div>
           <div data-testid="publish-after">
-            <div className="text-[var(--muted)]">{props.after.label}</div>
-            <div className="font-mono text-base">{props.after.value}</div>
+            <div className="text-[var(--color-muted-foreground)]">{props.after.label}</div>
+            <div className="font-mono text-base text-[var(--color-foreground)]">{props.after.value}</div>
           </div>
         </div>
         {delta && (
-          <div data-testid="publish-delta" className="mt-2 font-mono text-sm">
+          <div data-testid="publish-delta" className="mt-2 font-mono text-sm text-[var(--color-foreground)]">
             {delta}
           </div>
         )}
       </section>
 
-      <section data-testid="publish-export" className="mt-3">
-        <h3 className="text-xs font-semibold text-[var(--muted)]">Export</h3>
-        <p className="mt-1 text-sm">
+      <section data-testid="publish-export" className="mt-4">
+        <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)]">Export</h4>
+        <p className="mt-1 text-sm text-[var(--color-foreground)]">
           Allow to unlock the markdown export at{" "}
           <code className="font-mono">{props.exportPath}</code>.
         </p>
       </section>
 
-      <footer className="mt-4 flex items-center gap-2 border-t border-[var(--border)] pt-3">
+      <footer className="mt-6 flex items-center gap-2 border-t border-[var(--color-border)] pt-3">
         <button
           type="button"
           onClick={props.onAllow}
           disabled={decided}
           data-testid="publish-allow"
-          className="rounded bg-[var(--good)] px-3 py-1 text-sm font-medium text-black disabled:opacity-40"
+          style={{
+            background: "var(--good)", color: "black",
+            padding: "0.5rem 1rem", fontFamily: "var(--font-sans)",
+            fontSize: "0.875rem", fontWeight: 500, borderRadius: "var(--radius-md)",
+            border: "1px solid transparent", cursor: decided ? "not-allowed" : "pointer",
+            opacity: decided ? 0.4 : 1,
+          }}
         >
           {decided ? "Decided" : "Allow"}
         </button>
@@ -120,13 +128,14 @@ export function PublishCard(props: PublishCardProps) {
           }}
           disabled={decided}
           data-testid="publish-deny"
-          className="rounded border border-[var(--bad)] px-3 py-1 text-sm text-[var(--bad)] disabled:opacity-40"
+          className="btn btn-destructive"
+          style={{ minHeight: 44, padding: "0.625rem 0.875rem" }}
         >
           Deny
         </button>
         {expired && (
-          <span data-testid="publish-expired" className="ml-2 text-xs text-[var(--bad)]">
-            approval expired — restart verification.
+          <span data-testid="publish-expired" className="ml-2 text-xs text-[var(--color-destructive)]" role="status">
+            Approval expired — restart verification.
           </span>
         )}
       </footer>

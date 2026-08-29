@@ -1,9 +1,3 @@
-// Phase 1.3 — /signup page. Linked from the landing "Create one" anchor
-// (Qodo bug 3 in PR #5: the link was pointing at /api/auth/signup which
-// only accepts POST). Owns the email + password form and posts to the
-// existing /api/auth/signup API. On success the cookie is set by the
-// API and we navigate to /dashboard.
-
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "../../lib/session";
 import { SignupForm } from "../../components/SignupForm";
@@ -14,12 +8,24 @@ export default async function SignupPage() {
   const user = await getCurrentUser();
   if (user) redirect("/dashboard");
   return (
-    <div className="max-w-md mx-auto p-6">
-      <h1 className="text-2xl font-semibold">Create an account</h1>
-      <SignupForm />
-      <p className="mt-4 text-sm text-[var(--muted)]">
-        Already have an account? <a href="/" className="underline">Sign in</a>
-      </p>
+    <div className="page py-16 md:py-24">
+      <div className="max-w-md mx-auto">
+        <span className="rcp-eyebrow">
+          <span className="rcp-eyebrow-dot" aria-hidden="true" />
+          Step 1 of 1
+        </span>
+        <h1 className="mt-6 text-3xl">Create an account</h1>
+        <p className="mt-3 text-base">
+          Openwrite runs a single deterministic pipeline on any paper you point it at. You
+          decide what gets executed. The agent asks before anything irreversible.
+        </p>
+        <div className="card mt-8">
+          <SignupForm />
+        </div>
+        <p className="mt-5 text-sm text-[var(--color-muted-foreground)]">
+          Already have an account? <a href="/">Sign in</a>
+        </p>
+      </div>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { notFound } from "next/navigation";
 import { requireUser } from "../../../../lib/session";
 import { query } from "../../../../lib/db";
 import { buildExportInput } from "../../../../lib/export-data";
+import { Pill } from "../../../../components/Pill";
 
 export const dynamic = "force-dynamic";
 
@@ -34,52 +35,70 @@ export default async function PaperExportPage({
   const { markdown, pageCount, locked } = await buildExportInput(paper);
 
   return (
-    <div className="max-w-3xl mx-auto p-6" data-testid="export-page">
-      <div className="flex items-start justify-between">
-        <h1 className="text-xl font-semibold">Export — {paper.title ?? paper.slug}</h1>
-        <a href={`/paper/${paper.slug}`} className="text-sm text-[var(--muted)] underline">
-          ◀ Cockpit
+    <div className="page py-10" data-testid="export-page" style={{ maxWidth: "48rem" }}>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <span className="rcp-eyebrow">Export</span>
+          <h1 className="mt-3 text-2xl md:text-3xl">{paper.title ?? paper.slug}</h1>
+        </div>
+        <a
+          href={`/paper/${paper.slug}`}
+          className="text-xs text-[var(--color-muted-foreground)] no-underline hover:underline"
+        >
+          ← Cockpit
         </a>
       </div>
-      <p className="mt-2 text-sm text-[var(--muted)]" data-testid="export-page-count">
-        Review mode produced {pageCount} pages of markdown.
+      <p className="mt-3 text-sm" data-testid="export-page-count">
+        Review mode produced {pageCount} {pageCount === 1 ? "page" : "pages"} of markdown.
       </p>
 
-      {/* The download: locked until the Review-mode Publish gate is
-          allowed (Phase 4). The seed paper has no publish gate — the
-          demo download flows. */}
-      <div className="mt-4 flex items-center gap-3">
+      <div className="mt-6 flex items-center gap-3 flex-wrap">
         {locked ? (
-          <span
-            className="rounded border border-[var(--bad)] px-3 py-1 text-sm text-[var(--bad)]"
-            data-testid="export-locked"
-            title="The Publish gate has not allowed this review"
-          >
-            ⬇ Download locked — allow the Publish gate first
-          </span>
+          <>
+            <Pill
+              tone="bad"
+              data-testid="export-locked"
+              style={{ borderColor: "var(--color-destructive)", color: "var(--color-destructive)" }}
+              title="The Publish gate has not allowed this review"
+            >
+              Download locked — allow the Publish gate first
+            </Pill>
+            <a
+              href={`/paper/${paper.slug}`}
+              className="text-sm text-[var(--color-muted-foreground)] no-underline hover:underline"
+            >
+              Return to the paper and complete the Verify gate to unlock →
+            </a>
+          </>
         ) : (
           <a
             href={`/paper/${paper.slug}/export/download`}
             data-testid="export-download"
-            className="rounded bg-[var(--good)] px-3 py-1 text-sm font-medium text-black"
+            className="btn btn-primary"
           >
-            ⬇ Download review.md
+            Download review.md
           </a>
         )}
       </div>
 
-      <h2 className="mt-6 text-sm font-medium text-[var(--muted)]">Sections</h2>
-      <ul className="mt-1 list-disc pl-5 text-sm" data-testid="export-sections">
-        <li>TL;DR</li>
-        <li>Claims ↔ evidence</li>
-        <li>Reproduction diff</li>
-        <li>Open questions for the author</li>
-      </ul>
+      <section className="mt-8">
+        <span className="rcp-eyebrow">Sections</span>
+        <ul className="mt-3 list-disc pl-5 text-sm text-[var(--color-foreground)]" data-testid="export-sections">
+          <li>TL;DR</li>
+          <li>Claims ↔ evidence</li>
+          <li>Reproduction diff</li>
+          <li>Open questions for the author</li>
+        </ul>
+      </section>
 
-      <h2 className="mt-6 text-sm font-medium text-[var(--muted)]">Preview</h2>
-      <pre className="mt-1 rounded border border-[var(--border)] bg-[var(--panel-2)] p-3 text-xs font-mono leading-5 overflow-x-auto whitespace-pre-wrap">
-        {markdown}
-      </pre>
+      <section className="mt-8">
+        <span className="rcp-eyebrow">Preview</span>
+        <pre
+          className="mt-3 rounded border border-[var(--color-border)] bg-[var(--color-secondary)] p-3 text-xs font-mono leading-5 overflow-x-auto whitespace-pre-wrap text-[var(--color-foreground)]"
+        >
+          {markdown}
+        </pre>
+      </section>
     </div>
   );
 }

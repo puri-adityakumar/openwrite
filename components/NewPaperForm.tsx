@@ -1,11 +1,5 @@
 "use client";
 
-// Phase 2.1 — /paper/new client form. Owns the source-input + 3-mode
-// dial state. Review is the default mode (plan: "the verb the demo
-// beats use"). Submit creates a paper row via /api/papers, then asks
-// /api/agent/start to allocate a TrueForge session + first turn; the
-// form then routes to /paper/[slug] which opens the live SSE stream.
-
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
@@ -32,7 +26,6 @@ export function NewPaperForm() {
       return;
     }
     startTransition(async () => {
-      // 1) Create the paper row.
       const createRes = await fetch("/api/papers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -48,7 +41,6 @@ export function NewPaperForm() {
         setError("Paper create returned no id.");
         return;
       }
-      // 2) Start the agent run.
       const startRes = await fetch("/api/agent/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -69,11 +61,11 @@ export function NewPaperForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="mt-4 space-y-6">
+    <form onSubmit={onSubmit} className="mt-6 space-y-8" data-testid="new-paper-form">
       <section>
-        <h2 className="text-sm font-medium text-[var(--muted)]">Source</h2>
-        <div className="mt-2 rounded border border-[var(--border)] bg-[var(--panel)] p-3">
-          <p className="text-sm text-[var(--muted)]">
+        <span className="rcp-eyebrow">Source</span>
+        <div className="mt-3 card">
+          <p className="text-sm text-[var(--color-foreground)]">
             Drop a PDF or paste an arXiv URL.
           </p>
           <input
@@ -81,15 +73,21 @@ export function NewPaperForm() {
             name="source"
             placeholder="https://arxiv.org/abs/1706.03762"
             aria-label="Paper source URL or path"
-            className="mt-2 w-full rounded border border-[var(--border)] bg-[var(--bg)] px-3 py-2 font-mono text-sm"
+            className="input mt-3"
+            style={{ fontFamily: "var(--font-mono)" }}
             value={source}
             onChange={(e) => setSource(e.target.value)}
           />
         </div>
       </section>
+
       <section>
-        <h2 className="text-sm font-medium text-[var(--muted)]">Mode</h2>
-        <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-3" role="radiogroup" aria-label="Paper mode">
+        <span className="rcp-eyebrow">Mode</span>
+        <div
+          className="mt-3 inline-flex rounded border border-[var(--color-border)] bg-[var(--color-card)] p-1"
+          role="radiogroup"
+          aria-label="Paper mode"
+        >
           {MODES.map((m) => {
             const selected = mode === m.id;
             return (
@@ -99,33 +97,39 @@ export function NewPaperForm() {
                 role="radio"
                 aria-checked={selected}
                 onClick={() => setMode(m.id)}
-                className={
-                  "rounded border p-3 text-left " +
-                  (selected
-                    ? "border-[var(--accent)] bg-[var(--panel-2)]"
-                    : "border-[var(--border)] bg-[var(--panel)] hover:bg-[var(--panel-2)]")
-                }
+                data-testid={`mode-${m.id}`}
+                title={m.blurb}
+                className="px-3 py-1.5 text-sm font-sans rounded transition-colors"
+                style={{
+                  background: selected ? "var(--color-primary)" : "transparent",
+                  color: selected ? "var(--color-primary-foreground)" : "var(--color-foreground)",
+                  border: "none",
+                  cursor: "pointer",
+                }}
               >
-                <div className="font-semibold">{m.label}</div>
-                <div className="mt-1 text-xs text-[var(--muted)]">{m.blurb}</div>
-                {selected && (
-                  <div className="mt-2 text-xs text-[var(--accent)]">selected</div>
-                )}
+                {m.label}
               </button>
             );
           })}
         </div>
+        <p className="mt-2 text-xs text-[var(--color-muted-foreground)]">
+          {MODES.find((m) => m.id === mode)?.blurb}
+        </p>
       </section>
+
       {error && (
-        <p className="text-sm text-[var(--bad)]" role="alert">{error}</p>
+        <p className="text-sm text-[var(--color-destructive)]" role="alert">{error}</p>
       )}
       <div className="flex justify-end">
         <button
           type="submit"
           disabled={pending}
-          className="rounded bg-[var(--accent)] px-4 py-2 font-medium text-black disabled:opacity-50"
+          aria-busy={pending}
+          data-testid="new-paper-submit"
+          className="btn btn-primary"
         >
-          {pending ? "Starting…" : "Start"}
+          {pending && <span className="btn-spinner" aria-hidden="true" />}
+          <span>{pending ? "Starting" : "Start"}</span>
         </button>
       </div>
     </form>

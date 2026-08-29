@@ -1,9 +1,5 @@
 "use client";
 
-// Phase 5.2/5.3 — the "Replay this audit" header action. One click
-// creates a NEW TrueForge session for the same paper (fresh sandbox)
-// and reloads the cockpit onto the new run.
-
 import { useState } from "react";
 
 export function ReplayButton({ paperId }: { paperId: string }) {
@@ -21,8 +17,6 @@ export function ReplayButton({ paperId }: { paperId: string }) {
       });
       const d = (await r.json().catch(() => ({}))) as { error?: string };
       if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`);
-      // Reload whatever page we are on: the audit page re-renders with
-      // the replay rows, the cockpit reattaches to the new session.
       window.location.reload();
     } catch (e) {
       setError((e as Error).message);
@@ -37,12 +31,13 @@ export function ReplayButton({ paperId }: { paperId: string }) {
         onClick={() => void replay()}
         disabled={busy}
         data-testid="replay-btn"
-        className="rounded border border-[var(--border)] px-3 py-1 text-sm hover:bg-[var(--panel-2)] disabled:opacity-50"
+        className="btn btn-secondary"
+        style={{ minHeight: 44, padding: "0.625rem 0.875rem" }}
       >
-        {busy ? "Replaying…" : "Replay this audit"}
+        {busy ? "Replaying audit…" : "Replay this audit"}
       </button>
       {error && (
-        <span className="text-xs text-[var(--bad)]" data-testid="replay-error">
+        <span className="text-xs text-[var(--color-destructive)]" data-testid="replay-error" role="alert">
           {error}
         </span>
       )}

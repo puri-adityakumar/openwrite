@@ -9,7 +9,7 @@
 // is documented at https://docs.openalex.org/.
 
 const OPENALEX_BASE = "https://api.openalex.org";
-const UA = "openwrite-recap/0.1 (https://github.com/puri-adityakumar/openwrite)";
+const UA = "openwrite/0.1 (https://github.com/puri-adityakumar/openwrite)";
 
 export type OpenAlexAuthor = {
   id: string;

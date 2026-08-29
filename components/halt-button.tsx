@@ -1,12 +1,7 @@
 "use client";
 
-// Phase 5.1 — the Halt control. One button, two states, no third
-// state (P6): running/queued shows "⏸ Pause" (suspends the run);
-// paused shows "⏹ Stop" (terminates and locks); done/error/halted
-// shows a locked, non-interactive label. Success reloads the cockpit
-// so the papers row (halted/status) and the SSE attachment re-sync.
-
 import { useState } from "react";
+import { Pill } from "./Pill";
 
 export function HaltButton({
   paperId,
@@ -42,44 +37,36 @@ export function HaltButton({
 
   if (halted) {
     return (
-      <span
-        className="rounded border border-[var(--border)] px-2 py-1 text-[var(--muted)]"
-        data-testid="halt-btn"
-        data-state="locked"
-        title="Run halted — locked"
-      >
-        ⏹ Stopped
-      </span>
+      <Pill tone="bad" data-testid="halt-btn" data-state="locked" title="Run halted — locked">
+        Stopped
+      </Pill>
     );
   }
   if (status === "done" || status === "error") {
     return (
-      <span
-        className="rounded border border-[var(--border)] px-2 py-1 text-[var(--muted)]"
-        data-testid="halt-btn"
-        data-state="locked"
-      >
-        ⏹ {status === "error" ? "Errored" : "Done"}
-      </span>
+      <Pill tone="idle" data-testid="halt-btn" data-state="locked">
+        {status === "error" ? "Errored" : "Done"}
+      </Pill>
     );
   }
 
   const paused = status === "paused";
   const action: "pause" | "stop" = paused ? "stop" : "pause";
   return (
-    <span className="inline-flex items-center gap-1">
+    <span className="inline-flex items-center gap-2">
       <button
         type="button"
         disabled={busy}
         data-testid="halt-btn"
         data-state={paused ? "stop" : "pause"}
         onClick={() => void post(action)}
-        className="rounded border border-[var(--border)] px-2 py-1 disabled:opacity-50"
+        className="btn btn-secondary"
+        style={{ minHeight: 44, padding: "0.5rem 0.75rem" }}
       >
         {paused ? "⏹ Stop" : "⏸ Pause"}
       </button>
       {error && (
-        <span className="text-xs text-[var(--bad)]" data-testid="halt-error">
+        <span className="text-xs text-[var(--color-destructive)]" data-testid="halt-error" role="alert">
           {error}
         </span>
       )}

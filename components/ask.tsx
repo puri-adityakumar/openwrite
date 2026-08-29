@@ -1,12 +1,5 @@
 "use client";
 
-// Phase 3.2 — Ask composer.
-//
-// Free-text input with @cite token autocomplete. The composer submits
-// to /api/papers/:id/ask; the response renders below. Citations in
-// the answer (any [claim <uuid>] tag) are clickable and tell the
-// parent to open the Reader at the cited claim.
-
 import { useState } from "react";
 import type { CiteToken } from "../lib/cite";
 
@@ -47,8 +40,6 @@ export function Ask({
     }
   }
 
-  // Render the answer, replacing [claim <uuid>] with clickable links
-  // that fire onCite(uuid).
   function renderAnswer(text: string) {
     const parts: Array<React.ReactNode> = [];
     const re = /\[claim\s+([0-9a-f-]+)\]/g;
@@ -65,7 +56,7 @@ export function Ask({
           data-testid="answer-citation"
           data-claim-id={claimId}
           onClick={() => onCite(claimId)}
-          className="text-[var(--accent)] underline hover:no-underline"
+          className="text-[var(--accent-blue)] underline hover:no-underline bg-transparent border-0 cursor-pointer p-0 font-inherit"
         >
           [cite]
         </button>,
@@ -77,38 +68,44 @@ export function Ask({
   }
 
   return (
-    <form onSubmit={onSubmit} className="mt-6" data-testid="ask-composer">
-      <label className="block text-sm text-[var(--muted)]" htmlFor="ask-input">
-        Ask anything in this paper…
+    <form onSubmit={onSubmit} className="mt-8" data-testid="ask-composer">
+      <label className="block text-sm text-[var(--color-foreground)]" htmlFor="ask-input">
+        Ask anything in this paper
       </label>
-      <div className="mt-1 flex gap-2">
+      <p className="text-xs text-[var(--color-muted-foreground)]">
+        Type a question, or <code className="font-mono">@cite[claim:&lt;id&gt;]</code> to pin a specific one.
+      </p>
+      <div className="mt-2 flex gap-2">
         <input
           id="ask-input"
           type="text"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           placeholder="@cite[claim:<id>] what does this claim say?"
-          className="flex-1 rounded border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm font-mono"
+          className="input flex-1"
+          style={{ fontFamily: "var(--font-mono)" }}
           data-testid="ask-input"
           autoComplete="off"
         />
         <button
           type="submit"
           disabled={pending || !question.trim()}
-          className="rounded bg-[var(--accent)] px-3 py-2 text-sm font-medium text-black disabled:opacity-50"
+          aria-busy={pending}
+          className="btn btn-primary"
           data-testid="ask-submit"
         >
-          {pending ? "Asking…" : "Ask"}
+          {pending && <span className="btn-spinner" aria-hidden="true" />}
+          <span>{pending ? "Asking" : "Ask"}</span>
         </button>
       </div>
       {error && (
-        <p className="mt-2 text-sm text-[var(--bad)]" data-testid="ask-error" role="alert">
+        <p className="mt-2 text-sm text-[var(--color-destructive)]" data-testid="ask-error" role="alert">
           {error}
         </p>
       )}
       {answer !== null && (
         <div
-          className="mt-3 rounded border border-[var(--border)] bg-[var(--panel)] p-3 text-sm whitespace-pre-wrap"
+          className="mt-3 card text-sm whitespace-pre-wrap"
           data-testid="ask-answer"
         >
           {renderAnswer(answer)}

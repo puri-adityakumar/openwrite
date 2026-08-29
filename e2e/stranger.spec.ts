@@ -26,8 +26,8 @@ async function signInViaApi(context: import("@playwright/test").BrowserContext) 
 test("stranger: landing -> login -> dashboard -> cockpit first paint", async ({ page, context }) => {
   // t = 50s — LANDING -------------------------------------------------
   await page.goto("/");
-  await expect(page).toHaveTitle(/Recap/i);
-  await expect(page.getByRole("heading", { name: /Recap/i })).toBeVisible();
+  await expect(page).toHaveTitle(/Openwrite/i);
+  await expect(page.getByRole("heading", { name: /Openwrite/i })).toBeVisible();
   // Decision D2: demo creds visible under the sign-in card.
   await expect(page.getByText("demo@local")).toBeVisible();
   await expect(page.getByText("demo1234")).toBeVisible();

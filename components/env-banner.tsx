@@ -1,21 +1,7 @@
-// Phase 3.3 — env banner.
-//
-// Pinned by docs/architecture.md + Phase 3 plan:
-//   - One-line banner when a required key (GMI, Daytona) is absent.
-//   - Copyable curl command that writes the key into .env.
-//   - Polls every 15 s + immediately on window focus (P9 fix — never 5 s).
-//   - Sandbox-preview badge on the Verify card when Daytona key absent
-//     (the verify card lands in Phase 4; the flag is exposed here for
-//     Phase 4 to consume).
-//
-// The banner is a controlled component: the parent polls and feeds
-// the latest status. This keeps the component pure and testable
-// (the poll cadence test is a unit test against a fake timer, not a
-// full server-render round trip).
-
 "use client";
 
 import { useEffect } from "react";
+import { Pill } from "./Pill";
 
 export type EnvStatus = { gmi: boolean; daytona: boolean };
 
@@ -25,10 +11,7 @@ const MISSING_KEY: Array<{ key: keyof EnvStatus; label: string; env: string }> =
 ];
 
 function curlFor(env: string): string {
-  // One-line copyable curl. The key value is intentionally a placeholder
-  // (`replace-me`) — the user pastes their real key into the editor before
-  // running it. We never echo the actual key value.
-  return `curl -fsSL https://recap.dev/install-key | bash -s -- --set ${env}=replace-me`;
+  return `curl -fsSL https://openwrite.dev/install-key | bash -s -- --set ${env}=replace-me`;
 }
 
 export function EnvBanner({
@@ -39,17 +22,9 @@ export function EnvBanner({
 }: {
   status: EnvStatus;
   onCopy: (keyName: string) => Promise<boolean> | boolean;
-  /** Default 15 s — the P9 fix. The earlier 5 s caused perceptible flicker. */
   pollMs?: number;
-  /** Test hook: called once per poll so the cadence test can assert timing. */
   onPoll?: () => void;
 }) {
-  // Polling + on-focus refresh. The parent owns the actual status; this
-  // component just signals "go check again". We use a self-rescheduling
-  // setTimeout rather than setInterval so the next poll is scheduled
-  // *after* the current one completes — this avoids the strict-mode
-  // double-mount race that would otherwise produce two overlapping
-  // intervals in tests.
   useEffect(() => {
     if (!onPoll) return;
     let stopped = false;
@@ -75,33 +50,34 @@ export function EnvBanner({
   return (
     <div
       data-testid="env-banner"
-      className="w-full border-b border-[var(--warn)] bg-[var(--panel-2)] px-4 py-2 text-sm flex items-center gap-3"
+      className="w-full border-b bg-[var(--color-secondary)] px-4 py-2 text-sm flex items-center gap-3 flex-wrap"
+      style={{ borderColor: "var(--warn)" }}
       role="status"
     >
-      <span className="font-medium">Missing keys:</span>
+      <Pill tone="warn" style={{ borderColor: "var(--warn)", color: "var(--warn)" }}>
+        <span className="rcp-eyebrow-dot" style={{ background: "var(--warn)" }} aria-hidden="true" />
+        Missing keys
+      </Pill>
       {missing.map((k) => (
-        <span key={k.env} data-testid={`env-banner-key-${k.key}`} className="font-mono">
+        <span key={k.env} data-testid={`env-banner-key-${k.key}`} className="font-mono text-xs text-[var(--color-foreground)]">
           {k.label}
         </span>
       ))}
       {daytonaMissing && (
-        <span
-          data-testid="env-banner-sandbox-badge"
-          className="rounded border border-[var(--warn)] px-2 py-0.5 text-xs"
-        >
+        <Pill tone="warn" data-testid="env-banner-sandbox-badge" style={{ borderColor: "var(--warn)", color: "var(--warn)" }}>
           Sandbox preview
-        </span>
+        </Pill>
       )}
       <code
         data-testid="env-banner-curl"
-        className="ml-auto rounded bg-[var(--panel)] px-2 py-1 text-xs font-mono overflow-x-auto"
+        className="ml-auto rounded bg-[var(--color-card)] px-2 py-1 text-xs font-mono overflow-x-auto text-[var(--color-foreground)]"
       >
         {curlFor(missing[0]!.env)}
       </code>
       <button
         type="button"
         data-testid="env-banner-copy"
-        className="rounded border border-[var(--border)] px-2 py-1 text-xs"
+        className="btn-tiny"
         onClick={() => onCopy(missing[0]!.env)}
       >
         Copy

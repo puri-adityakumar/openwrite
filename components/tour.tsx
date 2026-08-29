@@ -1,11 +1,5 @@
 "use client";
 
-// Phase 6.3 — the Tour modal. A floating "ⓘ How it works" button
-// (fixed bottom-right) opens a 7-slide walkthrough — one screenshot
-// per surface, each with a one-line caption. Prev/Next + Escape +
-// close. Static assets only: the slides are pre-rendered screenshots
-// in /public/tour, so the tour works offline.
-
 import { useEffect, useRef, useState } from "react";
 
 const SLIDES: Array<{ src: string; caption: string }> = [
@@ -27,35 +21,32 @@ export function Tour() {
 
   useEffect(() => {
     if (!open) return;
-    // Qodo review #6 — establish real keyboard modality: focus moves
-    // into the dialog on open, Tab cycles within it, and focus
-    // returns to the opener on close.
+    // Inert the rest of the page so background controls are not
+    // tab-reachable and not announced while the dialog is open.
+    // We grab everything that is not the dialog shell.
+    const root = document.body;
+    const dialog = modalRef.current;
+    const siblings = Array.from(root.children).filter((el) => el !== dialog) as HTMLElement[];
+    const prevInert = siblings.map((el) => el.hasAttribute("inert"));
+    siblings.forEach((el) => el.setAttribute("inert", ""));
+    // Move focus into the dialog.
     closeRef.current?.focus();
+    // Escape closes; Tab is trapped to the dialog by the browser
+    // when we mark the rest of the tree inert.
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        e.preventDefault();
         setOpen(false);
-        return;
-      }
-      if (e.key !== "Tab" || !modalRef.current) return;
-      const focusables = Array.from(
-        modalRef.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input, [tabindex]:not([tabindex="-1"])',
-        ),
-      );
-      if (focusables.length === 0) return;
-      const first = focusables[0]!;
-      const last = focusables[focusables.length - 1]!;
-      const active = document.activeElement as HTMLElement | null;
-      if (e.shiftKey && (active === first || !modalRef.current.contains(active))) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && (active === last || !modalRef.current.contains(active))) {
-        e.preventDefault();
-        first.focus();
       }
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      siblings.forEach((el, i) => {
+        if (!prevInert[i]) el.removeAttribute("inert");
+      });
+      openerRef.current?.focus();
+    };
   }, [open]);
 
   const close = () => {
@@ -70,36 +61,42 @@ export function Tour() {
         ref={openerRef}
         data-testid="tour-open"
         onClick={() => { setOpen(true); setIndex(0); }}
-        className="fixed bottom-5 right-5 z-40 rounded-full border border-[var(--border)] bg-[var(--panel)] px-4 py-2 text-sm shadow-md hover:bg-[var(--panel-2)]"
-        title="How Recap works"
+        title="How Openwrite works"
+        className="btn btn-secondary"
+        style={{
+          position: "fixed", bottom: "1.25rem", right: "1.25rem", zIndex: 40,
+          borderRadius: "var(--radius-full)", padding: "0.5rem 1rem", fontSize: "0.875rem",
+          background: "var(--color-secondary)", borderColor: "var(--color-border)",
+        }}
       >
         ⓘ How it works
       </button>
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(11,13,18,0.72)" }}
           data-testid="tour-modal"
           role="dialog"
           aria-modal="true"
           aria-labelledby="tour-title"
           ref={modalRef}
         >
-          <div className="w-full max-w-2xl rounded-lg border border-[var(--border)] bg-[var(--bg)] p-4 shadow-xl">
+          <div className="card w-full" style={{ maxWidth: "42rem" }}>
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold" id="tour-title">How Recap works</h2>
+              <h2 className="text-sm" id="tour-title">How Openwrite works</h2>
               <button
                 type="button"
                 ref={closeRef}
                 data-testid="tour-close"
                 onClick={close}
-                className="rounded border border-[var(--border)] px-2 py-0.5 text-sm text-[var(--muted)] hover:bg-[var(--panel-2)]"
+                className="btn-tiny"
               >
-                ✕ Close
+                Close
               </button>
             </div>
 
-            <ol className="mt-3 space-y-4">
+            <ol className="mt-4 space-y-4">
               {SLIDES.map((s, i) => (
                 <li
                   key={s.src}
@@ -110,24 +107,25 @@ export function Tour() {
                   <img
                     src={s.src}
                     alt={s.caption}
-                    className="w-full rounded border border-[var(--border)]"
+                    className="w-full rounded border border-[var(--color-border)]"
                   />
-                  <p className="mt-2 text-sm text-[var(--muted)]">{s.caption}</p>
+                  <p className="mt-2 text-sm text-[var(--color-muted-foreground)]">{s.caption}</p>
                 </li>
               ))}
             </ol>
 
-            <div className="mt-4 flex items-center justify-between border-t border-[var(--border)] pt-3">
+            <div className="mt-4 flex items-center justify-between border-t border-[var(--color-border)] pt-3">
               <button
                 type="button"
                 data-testid="tour-prev"
                 onClick={() => setIndex((i) => Math.max(0, i - 1))}
                 disabled={index === 0}
-                className="rounded border border-[var(--border)] px-3 py-1 text-sm disabled:opacity-40"
+                className="btn btn-secondary"
+                style={{ minHeight: 44, padding: "0.625rem 1rem" }}
               >
-                ◀ Prev
+                ← Prev
               </button>
-              <span className="text-xs text-[var(--muted)]" data-testid="tour-counter">
+              <span className="text-xs text-[var(--color-muted-foreground)]" data-testid="tour-counter">
                 {index + 1} / {SLIDES.length}
               </span>
               <button
@@ -135,9 +133,10 @@ export function Tour() {
                 data-testid="tour-next"
                 onClick={() => setIndex((i) => Math.min(SLIDES.length - 1, i + 1))}
                 disabled={index === SLIDES.length - 1}
-                className="rounded border border-[var(--border)] px-3 py-1 text-sm disabled:opacity-40"
+                className="btn btn-secondary"
+                style={{ minHeight: 44, padding: "0.625rem 1rem" }}
               >
-                Next ▶
+                Next →
               </button>
             </div>
           </div>

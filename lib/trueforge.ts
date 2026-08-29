@@ -1,6 +1,6 @@
 // Phase 2.1 — TrueForge adapter boundary.
 //
-// This is the ONLY file in the Recap app that talks to the TrueForge
+// This is the ONLY file in the Openwrite app that talks to the TrueForge
 // server (the harness that runs in Docker at localhost:18790). The rest
 // of the app depends on the `TrueForgeClient` interface defined here.
 //

@@ -1,12 +1,8 @@
 "use client";
 
-// Phase 1.3 — landing page (auth-split). The client component owns the
-// email/password state and posts to /api/auth/login. On success it
-// navigates to /dashboard; on failure it shows the neutral "Invalid
-// credentials" copy the plan requires.
-
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Pill } from "./Pill";
 
 export function Landing() {
   const router = useRouter();
@@ -34,67 +30,102 @@ export function Landing() {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-8 max-w-5xl mx-auto">
-      <section>
-        <h1 className="text-3xl font-semibold tracking-tight">Recap</h1>
-        <p className="mt-4 text-[var(--muted)]">
+    <div className="page-wide grid grid-cols-1 md:grid-cols-12 gap-12 py-16 md:py-24 items-start">
+      <section className="md:col-span-7 animate-fade-in">
+        <span className="rcp-eyebrow">
+          <span className="rcp-eyebrow-dot" aria-hidden="true" />
+          Now in private alpha
+        </span>
+        <h1 className="mt-6 max-w-2xl text-4xl md:text-6xl">
           Drop a paper.<br />
           Watch an agent dissect it for you.
+        </h1>
+        <p className="mt-6 max-w-xl text-lg">
+          Openwrite runs a single deterministic pipeline on any preprint or PDF you point
+          it at. Source, parse, extract, score, verify, publish. The agent asks
+          before it does anything irreversible. You watch the trail and decide.
         </p>
-        <p className="mt-6 text-sm leading-6">
-          Dr. K reads 40 preprints a week.<br />
-          9h &rarr; 47 min.<br />
-          2 sends blocked.
-        </p>
+
+        <div className="mt-10 max-w-xl card">
+          <h2 className="text-base">What the agent does</h2>
+          <ol className="mt-4 space-y-3 text-sm text-[var(--color-foreground)]">
+            <li className="flex items-start gap-3">
+              <Pill tone="good" style={{ minWidth: "5rem", justifyContent: "center" }}>
+                Source
+              </Pill>
+              <span className="text-base text-[var(--color-foreground)]">Fetches from arXiv, OpenAlex, or a local PDF path</span>
+            </li>
+            <li className="flex items-start gap-3">
+              <Pill tone="good" style={{ minWidth: "5rem", justifyContent: "center" }}>
+                Extract
+              </Pill>
+              <span className="text-base text-[var(--color-foreground)]">Surfaces every claim with a citation and a confidence</span>
+            </li>
+            <li className="flex items-start gap-3">
+              <Pill tone="warn" style={{ minWidth: "5rem", justifyContent: "center" }}>
+                Verify
+              </Pill>
+              <span className="text-sm text-[var(--color-muted-foreground)]">Asks for your explicit allow before running any sandbox</span>
+            </li>
+          </ol>
+        </div>
       </section>
-      <section>
-        <h2 className="text-lg font-semibold">Sign in</h2>
-        <form onSubmit={onSubmit} className="mt-3 space-y-3 max-w-sm">
-          <label className="block">
-            <span className="text-sm text-[var(--muted)]">Email</span>
-            <input
-              type="email"
-              name="email"
-              autoComplete="email"
-              required
-              aria-label="Email"
-              className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--panel)] px-3 py-2"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm text-[var(--muted)]">Password</span>
-            <input
-              type="password"
-              name="password"
-              autoComplete="current-password"
-              required
-              aria-label="Password"
-              className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--panel)] px-3 py-2"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </label>
-          {error && (
-            <p className="text-sm text-[var(--bad)]" role="alert">
-              {error}
-            </p>
-          )}
-          <button
-            type="submit"
-            disabled={pending}
-            className="rounded bg-[var(--accent)] px-4 py-2 font-medium text-black disabled:opacity-50"
-          >
-            {pending ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
-        <p className="mt-3 text-xs text-[var(--muted)]">
-          Need an account? <a href="/signup" className="underline">Create one</a>
-        </p>
-        <p className="mt-6 text-sm font-mono text-[var(--muted)]">
-          demo@local / demo1234
-        </p>
+
+      <section className="md:col-span-5 animate-slide-in">
+        <div className="card">
+          <h2 className="text-xl">Sign in</h2>
+          <p className="mt-1 text-sm">Continue to your paper runs.</p>
+
+          <form onSubmit={onSubmit} className="mt-6 space-y-4">
+            <label className="block">
+              <span className="text-sm text-[var(--color-foreground)]">Email</span>
+              <input
+                type="email"
+                name="email"
+                autoComplete="email"
+                required
+                aria-label="Email"
+                className="input mt-1.5"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm text-[var(--color-foreground)]">Password</span>
+              <input
+                type="password"
+                name="password"
+                autoComplete="current-password"
+                required
+                aria-label="Password"
+                className="input mt-1.5"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </label>
+            {error && (
+              <p className="text-sm text-[var(--color-destructive)]" role="alert">
+                {error}
+              </p>
+            )}
+            <button
+              type="submit"
+              disabled={pending}
+              aria-busy={pending}
+              className="btn btn-primary w-full justify-center"
+            >
+              {pending && <span className="btn-spinner" aria-hidden="true" />}
+              <span>{pending ? "Signing in" : "Sign in"}</span>
+            </button>
+          </form>
+
+          <p className="mt-5 text-sm text-[var(--color-muted-foreground)]">
+            Need an account? <a href="/signup">Create one</a>
+          </p>
+          <p className="mt-2 text-xs text-[var(--color-muted-foreground)] font-mono">
+            demo@local / demo1234
+          </p>
+        </div>
       </section>
     </div>
   );

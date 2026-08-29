@@ -69,10 +69,11 @@ export default async function PaperPage({
   const seed = seedResult.rows[0];
   if (!seed) {
     return (
-      <div className="max-w-5xl mx-auto p-6">
-        <h1 className="text-2xl font-semibold">{paper.title ?? paper.slug}</h1>
-        <p className="mt-4 text-[var(--muted)]">
-          No seed render available for this paper. Start a run from /paper/new to see the live cockpit.
+      <div className="page-wide py-10">
+        <h1 className="text-2xl">{paper.title ?? paper.slug}</h1>
+        <p className="mt-4 text-[var(--color-muted-foreground)]">
+          No seed render available for this paper. Start a run from{" "}
+          <a href="/paper/new">/paper/new</a> to see the live cockpit.
         </p>
       </div>
     );

@@ -16,7 +16,7 @@ export function buildEnvContent(
   entries: Array<[string, string]>,
   exampleContent: string | null = null,
 ): string {
-  let content = existing ?? exampleContent ?? "# Recap environment\n";
+  let content = existing ?? exampleContent ?? "# Openwrite environment\n";
   for (const [key, value] of entries) {
     if (!value) throw new Error(`refusing to set ${key}: value is empty`);
     const line = `${key}=${value}`;
