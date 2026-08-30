@@ -422,9 +422,13 @@ export async function buildStream(input: {
                 // idempotently and with full limit context (Qodo: Cap audit never
                 // retried + Cap retry loses limit context + can duplicate audits).
                 try {
+                  // Idempotency: only skip retry if THIS cap (same totalTokens)
+                  // was already audited. A prior cap from an earlier run/replay
+                  // with different usage must not suppress the current retry
+                  // (Qodo: Old cap audit suppresses retry).
                   const exists = await query(
-                    `SELECT 1 FROM audit WHERE paper_id = $1 AND events->>'type' = 'cap.exceeded' LIMIT 1`,
-                    [paperId],
+                    `SELECT 1 FROM audit WHERE paper_id = $1 AND events->>'type' = 'cap.exceeded' AND (events->'payload'->>'totalTokens')::int = $2 LIMIT 1`,
+                    [paperId, m.totalTokens ?? 0],
                   );
                   if (exists.rows.length === 0) {
                     await appendAuditEvent(paperId, {
@@ -437,7 +441,7 @@ export async function buildStream(input: {
                       },
                     });
                   } else {
-                    console.log("[stream] cap audit already present — skipping duplicate retry");
+                    console.log("[stream] cap audit already present for this totalTokens — skipping duplicate retry");
                   }
                 } catch (e3) {
                   console.error("[stream] cap audit retry failed:", (e3 as Error).message);
