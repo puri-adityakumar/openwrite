@@ -1,0 +1,74 @@
+/* ============================================================
+   Signup-only additions — extend globals.css. Editorial tone.
+   Section-scoped: imported once by components/signup/FeaturesPanel.tsx.
+
+   Token references (see app/globals.css):
+     --color-foreground      ink (cool near-black, white in dark)
+     --accent-indigo         signup-specific accent (Verify fill, focus ring,
+                             hold-progress bar, card hover shadow)
+     --accent-indigo-soft    hover shadow at 10%/18% alpha
+     --ease-out              cubic-bezier(0.16, 1, 0.3, 1)
+
+   Design constraints honored:
+     - No new dependencies, no hex colors, no third typeface.
+     - Indigo uses reserved: Verify node, input focus ring, hold-progress,
+       card hover shadow. No body text uses indigo.
+     - All infinite motion respects prefers-reduced-motion.
+   ============================================================ */
+
+/* Trail connector stroke draw with stagger. */
+.signup-trail-connector {
+  stroke: var(--color-foreground);
+  stroke-width: 1.5;
+  fill: none;
+  stroke-dasharray: 80;
+  stroke-dashoffset: 80;
+  animation: rcp-trail-stroke-draw 600ms var(--ease-out) forwards;
+}
+.signup-trail-connector.c-1 { animation-delay: 0ms; }
+.signup-trail-connector.c-2 { animation-delay: 100ms; }
+.signup-trail-connector.c-3 { animation-delay: 200ms; }
+.signup-trail-connector.c-4 { animation-delay: 300ms; }
+.signup-trail-connector.c-5 { animation-delay: 400ms; }
+@keyframes rcp-trail-stroke-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+/* Approval hold-progress bar — 0% to 100% width over 3s, infinite. */
+.signup-hold-progress {
+  fill: var(--accent-indigo);
+  transform-origin: 0% 50%;
+  transform-box: fill-box;
+  animation: rcp-hold-fill 3s var(--ease-out) infinite;
+}
+@keyframes rcp-hold-fill {
+  0%   { transform: scaleX(0); }
+  80%  { transform: scaleX(1); }
+  100% { transform: scaleX(1); }
+}
+
+/* Indigo input focus ring — overrides the default `:focus-visible` outline
+   for inputs in the signup card so the field underlines itself in indigo. */
+.signup-card-input:focus-visible {
+  outline: none;
+  border-color: var(--accent-indigo);
+  box-shadow: 0 1px 0 0 var(--accent-indigo);
+}
+
+/* Signup card lift on hover. Subtle, 1px translate-y + softer shadow. */
+.signup-card-hoverable {
+  transition: transform 600ms var(--ease-out), box-shadow 600ms var(--ease-out);
+  will-change: transform;
+}
+.signup-card-hoverable:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px -8px var(--accent-indigo-soft);
+}
+
+/* Reduced-motion: collapse all signup animations. */
+@media (prefers-reduced-motion: reduce) {
+  .signup-trail-connector { stroke-dashoffset: 0 !important; animation: none !important; }
+  .signup-hold-progress   { transform: scaleX(1); animation: none; }
+  .signup-card-hoverable,
+  .signup-card-hoverable:hover { transform: none; box-shadow: none; }
+}

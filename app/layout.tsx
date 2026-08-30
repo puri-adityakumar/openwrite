@@ -13,11 +13,11 @@ const themeBootstrap = `
 (function () {
   try {
     var stored = localStorage.getItem('rcp-theme');
-    // Light is the default for new visitors. The OS preference is
-    // intentionally ignored so the marketing page first-paints
-    // light regardless of OS setting; once the visitor explicitly
-    // toggles the theme, localStorage wins.
-    var theme = stored || 'light';
+    var prefersDark = window.matchMedia &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches;
+    // Priority: localStorage (returning visitor) → OS preference → light default.
+    // OS preference is the fallback so dark-mode visitors get a dark first paint.
+    var theme = stored || (prefersDark ? 'dark' : 'light');
     document.documentElement.setAttribute('data-theme', theme);
     document.documentElement.style.colorScheme = theme;
   } catch (e) { /* SSR safe */ }
@@ -26,7 +26,12 @@ const themeBootstrap = `
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    // suppressHydrationWarning: the inline themeBootstrap script sets
+    // data-theme and colorScheme on <html> before React hydrates so the
+    // first paint matches the resolved theme. React would otherwise
+    // warn about the mismatch when it re-renders the attribute. The
+    // attribute values are safe — the bootstrap is the source of truth.
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />

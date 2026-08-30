@@ -220,6 +220,14 @@ button { font-family: var(--font-body); } /* design-audit: no third typeface —
 
 code, pre, kbd, samp { font-family: var(--font-num); }
 
+/* Navbar link — color is set inline; hover promotes to indigo.
+   Tailwind v4 doesn't compile arbitrary-value hover variants with
+   CSS variables reliably, so this lives in plain CSS. */
+.navbar-link:hover {
+  color: var(--accent-indigo);
+  text-decoration: none;
+}
+
 /* Focus ring — visible, 2px, ink color, 2px offset. The single source
    of truth for focus styling across the whole surface. No element
    should override this with a competing outline; the foreground color
@@ -336,7 +344,7 @@ main { animation: rcp-fade-in 0.3s var(--ease-out) both; }
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
   padding: 0.625rem 1rem;
-  font-family: var(--font-sans);
+  font-family: var(--font-display);
   font-size: 0.875rem;
   font-weight: 500;
   border-radius: var(--radius-md);
@@ -435,7 +443,7 @@ main { animation: rcp-fade-in 0.3s var(--ease-out) both; }
 .input {
   width: 100%;
   padding: 0.625rem 0.75rem;
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   font-size: 1rem;
   color: var(--color-foreground);
   background: var(--color-background);
