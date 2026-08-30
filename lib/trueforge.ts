@@ -558,14 +558,16 @@ class HttpTrueForgeClient implements TrueForgeClient {
   }
 
   async resumeTurnWithApproval(input: ResumeTurnInput): Promise<ResumeTurnResult> {
-    const item: ResumeInputItem = {
-      type: "user.tool_approval",
-      threadId: input.threadId,
-      toolCallId: input.toolCallId,
+    // Wire shape per OpenAPI UserToolApprovalEvent: snake_case thread_id / tool_call_id
+    // (internal ResumeTurnInput is camel for app code; fake also uses camel).
+    const item = {
+      type: "user.tool_approval" as const,
+      thread_id: input.threadId,
+      tool_call_id: input.toolCallId,
       approval:
         input.decision === "allow"
-          ? { status: "allow" }
-          : { status: "deny", reason: input.reason ?? "" },
+          ? { status: "allow" as const }
+          : { status: "deny" as const, reason: input.reason ?? "" },
     };
     const res = await fetch(
       `${baseUrl()}/api/v1/sessions/${encodeURIComponent(input.sessionId)}/turns`,
