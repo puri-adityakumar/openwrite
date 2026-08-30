@@ -219,22 +219,37 @@ export async function buildStream(input: {
         // the live adapter works without a code change.
         if (event.type === "tool.approval_required") {
           const flat = event.payload as Record<string, unknown>;
-          const toolCalls = Array.isArray(flat.toolCalls) ? flat.toolCalls as Array<Record<string, unknown>> : [];
+          const toolCalls = Array.isArray(flat.toolCalls)
+            ? (flat.toolCalls as Array<Record<string, unknown>>)
+            : Array.isArray((flat as Record<string, unknown>).tool_calls)
+              ? ((flat as Record<string, unknown>).tool_calls as Array<Record<string, unknown>>)
+              : [];
           const first = toolCalls[0] ?? {};
-          const toolCallId =
-            String(flat.toolCallId ?? first.id ?? first.toolCallId ?? "");
-          const toolName = String(
-            flat.toolName ?? first.name ?? first.toolName ?? "tool",
+          const toolCallId = String(
+            flat.toolCallId ??
+              (flat as Record<string, unknown>).tool_call_id ??
+              first.id ??
+              first.toolCallId ??
+              (first as Record<string, unknown>).tool_call_id ??
+              "",
           );
-          const threadId = String(flat.threadId ?? "");
+          const toolName = String(
+            flat.toolName ??
+              (flat as Record<string, unknown>).tool_name ??
+              first.name ??
+              first.toolName ??
+              (first as Record<string, unknown>).tool_name ??
+              "tool",
+          );
+          const threadId = String(flat.threadId ?? (flat as Record<string, unknown>).thread_id ?? "");
           // Qodo review #6 — an approval event with NO extractable
-          // tool-call id can never be approved (the resume contract
-          // requires one), and inserting it would occupy the
-          // (threadId, '') unique key. Skip the insert; the event
-          // still flows to the audit + cockpit.
-          if (!toolCallId) {
+          // thread-id / tool-call id can never be approved (the resume
+          // contract requires both — TrueForge rejects with 400
+          // `expected string, received undefined` for either empty).
+          // Skip the insert; the event still flows to the audit + cockpit.
+          if (!threadId || !toolCallId) {
             console.error(
-              "[stream] tool.approval_required without a tool-call id — skipping gate insert",
+              `[stream] tool.approval_required without threadId/toolCallId — skipping gate insert (threadId=${threadId ? "ok" : "empty"} toolCallId=${toolCallId ? "ok" : "empty"})`,
             );
           } else {
             try {
@@ -323,7 +338,16 @@ export async function buildStream(input: {
             const first = tcs[0] ?? {};
             const toolCallId = String(first.id ?? first.toolCallId ?? "");
             const toolName = String(first.name ?? first.toolName ?? "tool");
-            if (!toolCallId) continue;
+            // Both thread_id AND tool_call_id are required by the
+            // resume contract (TrueForge returns 400 if either is empty).
+            // Skip the insert — the event still flows to the audit/cockpit,
+            // but no gate row is created that the approve route can't resume.
+            if (!threadId || !toolCallId) {
+              console.error(
+                `[stream] requiredAction missing threadId/toolCallId — skipping gate insert (threadId=${threadId ? "ok" : "empty"} toolCallId=${toolCallId ? "ok" : "empty"} type=${act?.type})`,
+              );
+              continue;
+            }
             try {
               await insertGate({
                 paperId,

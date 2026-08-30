@@ -42,7 +42,12 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  const user = await requireUser();
+  let user;
+  try {
+    user = await requireUser();
+  } catch {
+    return NextResponse.json({ ok: false, error: "authentication required" }, { status: 401 });
+  }
   const { id } = await params;
   const paper = await query<PaperRow>(
     `SELECT user_id, source_pdf FROM papers WHERE id = $1 LIMIT 1`,

@@ -28,7 +28,12 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  const user = await requireUser();
+  let user;
+  try {
+    user = await requireUser();
+  } catch {
+    return err(401, "authentication required");
+  }
   const { id } = await params;
 
   const paper = await query<{ user_id: string; title: string | null; slug: string }>(

@@ -15,7 +15,12 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  const user = await requireUser();
+  let user;
+  try {
+    user = await requireUser();
+  } catch {
+    return NextResponse.json({ ok: false, error: "authentication required" }, { status: 401 });
+  }
   const { id } = await params;
 
   const paper = await query<{ user_id: string }>(
