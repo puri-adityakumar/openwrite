@@ -1,7 +1,8 @@
 // Phase 2.1 — TrueForge adapter (live-only).
 //
 // This is the ONLY file that talks to the TrueForge server (the harness
-// that runs at TRUEFORGE_BASE_URL, default http://localhost:8790). The rest
+// that runs at TRUEFORGE_BASE_URL, default http://localhost:18790 for
+// `docker compose up`; standalone `npx` defaults to 8790). The rest
 // of the app depends on the `TrueForgeClient` interface defined here — no
 // in-process fake, no deterministic double.
 //
@@ -62,7 +63,16 @@ export interface TrueForgeClient {
 }
 
 function baseUrl(): string {
-  return process.env.TRUEFORGE_BASE_URL ?? "http://localhost:8790";
+  // Canonical host port for `docker compose up` is 18790 (see
+  // docker-compose.override.yml + docs/architecture.md). Standalone
+  // `npx @truefoundry/trueforge` defaults to 8790 — set
+  // TRUEFORGE_BASE_URL=http://localhost:8790 when using that path.
+  // TF_BASE_URL is a legacy alias kept for backwards compat.
+  return (
+    process.env.TRUEFORGE_BASE_URL ??
+    process.env.TF_BASE_URL ??
+    "http://localhost:18790"
+  );
 }
 
 // ----------------------------------------------------------------------------
@@ -367,12 +377,34 @@ function translateWireEvent(
     }
     case "turn.done": {
       const state = ev.state ?? { status: "done" };
+      // Normalize nested required_actions: accept snake_case/camelCase for
+      // threadId and toolCalls[*].id so downstream (stream route + reducer)
+      // sees a consistent shape regardless of wire casing.
+      const rawActions = (state.required_actions as unknown[] | undefined) ?? [];
+      const requiredActions = rawActions.map((a) => {
+        if (!a || typeof a !== "object") return a;
+        const act = a as Record<string, unknown>;
+        const tcsRaw = Array.isArray(act.toolCalls)
+          ? act.toolCalls
+          : Array.isArray(act.tool_calls)
+            ? act.tool_calls
+            : null;
+        if (tcsRaw === null) return act;
+        const tcs = (tcsRaw as Array<Record<string, unknown>>).map((tc) => {
+          if (!tc || typeof tc !== "object") return tc;
+          const id = (tc.id ?? tc.toolCallId ?? (tc as Record<string, unknown>).tool_call_id ?? "") as string;
+          const name = (tc.name ?? tc.toolName ?? (tc as Record<string, unknown>).tool_name ?? "tool") as string;
+          return { ...tc, id, toolCallId: id, tool_call_id: id, name, toolName: name, tool_name: name };
+        });
+        const threadId = (act.threadId ?? act.thread_id ?? "") as string;
+        return { ...act, threadId, thread_id: threadId, toolCalls: tcs, tool_calls: tcs };
+      });
       return {
         ...base,
         type: "turn.done",
         payload: {
           state: state.status,
-          requiredActions: state.required_actions ?? [],
+          requiredActions,
           metrics: state.metrics ?? { totalTokens: 0, totalCostInUsd: 0 },
         },
       };

@@ -27,7 +27,7 @@ constraints) · a live-only TrueForge adapter · Playwright E2E on desktop
 
 | Surface | What is previewed | What makes it real |
 |---|---|---|
-| TrueForge adapter | Live-only: talks HTTP to `TRUEFORGE_BASE_URL` (default `http://localhost:8790`). Requires `npx @truefoundry/trueforge@latest` harness. | Set `TRUEFORGE_BASE_URL` + ensure the harness is reachable (health: `GET /api/v1/...`). |
+| TrueForge adapter | Live-only: talks HTTP to `TRUEFORGE_BASE_URL` (default `http://localhost:18790` for `docker compose up`; standalone `npx @truefoundry/trueforge` defaults to `8790` — set `TRUEFORGE_BASE_URL=http://localhost:8790` in that case). | Set `TRUEFORGE_BASE_URL` to match where the harness listens (health: `GET /healthz`). |
 | Daytona sandbox | No `DAYTONA_API_KEY` ⇒ "Sandbox preview" badge; no real isolation is exercised. The envelope on the Verify card renders "—" when the payload doesn't specify it. | Set `DAYTONA_API_KEY` (with a live TrueForge harness). |
 | Seed first paint | The demo paper renders from `seed_audits`/`seed_claims` fixture data (offline-capable by design, P9) | Live runs replace it per paper once a session starts |
 | Publish/Save gates | Cards + plumbing + locks are shipped and unit-tested; only `verify` gates are emitted by the current agent today | A real adapter event with `gateKind: "publish" \| "save"` |

@@ -4,7 +4,7 @@
 
 **How to use:** Run top-to-bottom. P0 = smoke gate, P1 = regression (including Issue #1), P2 = full surface. Tick `□` → `☑`. Failed item = file issue with ID.
 
-Prerequisites: `npm install && docker compose up` → Postgres 5433, Redis 6380, Next 13000 + `npx --yes @truefoundry/trueforge@latest` (live TrueForge on 8790, `TRUEFORGE_BASE_URL=http://localhost:8790`). `npm run parity` = 0, `npm test` = green.
+Prerequisites: `npm install && docker compose up` → Postgres 5433, Redis 6380, Next 13000 + TrueForge on `18790` (`TRUEFORGE_BASE_URL=http://localhost:18790` for compose; standalone `npx` defaults to `8790` — set `TRUEFORGE_BASE_URL=http://localhost:8790` for that path). `npm run parity` = 0, `npm test` = green.
 
 ---
 

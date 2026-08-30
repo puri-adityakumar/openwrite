@@ -1,7 +1,7 @@
 # Day-one sandbox.created probe (P7)
 
 Captured 2026-08-27 against the live TrueForge harness
-(`TRUEFORGE_BASE_URL=http://localhost:8790`, `npx @truefoundry/trueforge@latest`).
+(`TRUEFORGE_BASE_URL=http://localhost:18790` for `docker compose up`; standalone `npx @truefoundry/trueforge@latest` defaults to `8790`).
 Reproducible: `npx @truefoundry/trueforge@latest &` + `npm run dev`, then any
 `/api/agent/start` produces the live event sequence.
 

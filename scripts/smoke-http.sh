@@ -9,7 +9,7 @@
 #   - SSE subscribe endpoint accepts the connection
 set -u
 
-TF="${TF_BASE_URL:-http://localhost:8790}"
+TF="${TRUEFORGE_BASE_URL:-${TF_BASE_URL:-http://localhost:18790}}"
 say() { echo "[smoke-http] $*"; }
 die() { say "FAIL: $*"; exit 1; }
 

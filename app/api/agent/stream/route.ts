@@ -289,6 +289,78 @@ export async function buildStream(input: {
             }
           }
         }
+        // Qodo #2 — stranded paused: if turn.done carries requiredActions
+        // but every entry lacks threadId/toolCallId, persisting no gate and
+        // then marking paused leaves the run permanently stuck with no
+        // Allow/Deny path. Detect the stranded case BEFORE the reducer sees
+        // the event, replace the payload with a filtered list so the reducer
+        // cannot pause on unpersistable gates, and surface a recoverable
+        // turn.error instead.
+        let turnDoneStranded = false;
+        let turnDoneFiltered: Array<Record<string, unknown>> | null = null;
+        if (event.type === "turn.done") {
+          const raw = (event.payload.requiredActions as Array<Record<string, unknown>> | undefined) ?? [];
+          if (raw.length > 0) {
+            const filtered = raw.filter((act) => {
+              if (act?.type !== "tool.approval_required" && act?.type !== "tool.response_required") return true;
+              const tid = String((act as Record<string, unknown>).threadId ?? (act as Record<string, unknown>).thread_id ?? "");
+              const tcs = (Array.isArray((act as Record<string, unknown>).toolCalls)
+                ? (act as Record<string, unknown>).toolCalls
+                : Array.isArray((act as Record<string, unknown>).tool_calls)
+                  ? (act as Record<string, unknown>).tool_calls
+                  : []) as Array<Record<string, unknown>>;
+              const first = tcs[0] ?? {};
+              const tcid = String(
+                first.id ??
+                  first.toolCallId ??
+                  (first as Record<string, unknown>).tool_call_id ??
+                  "",
+              );
+              return Boolean(tid && tcid);
+            });
+            // Only approval/response gates matter for the stranded check;
+            // if at least one gate existed and none survived filtering, we are stranded.
+            const rawGateCount = raw.filter(
+              (a) => a?.type === "tool.approval_required" || a?.type === "tool.response_required",
+            ).length;
+            const filteredGateCount = filtered.filter(
+              (a) => a?.type === "tool.approval_required" || a?.type === "tool.response_required",
+            ).length;
+            if (rawGateCount > 0 && filteredGateCount === 0) {
+              turnDoneStranded = true;
+              turnDoneFiltered = filtered;
+              // Replace the payload so the reducer sees no persistable gate
+              // and will NOT set status=paused (it will fall through to done/error).
+              (event.payload as Record<string, unknown>).requiredActions = filtered;
+            } else if (filtered.length !== raw.length) {
+              // Some entries were invalid — keep only the valid ones so the
+              // reducer and later insert loop cannot pause on an unpersistable gate.
+              turnDoneFiltered = filtered;
+              (event.payload as Record<string, unknown>).requiredActions = filtered;
+              for (const act of raw) {
+                if (!filtered.includes(act)) {
+                  const tid = String((act as Record<string, unknown>).threadId ?? (act as Record<string, unknown>).thread_id ?? "");
+                  const tcs = (Array.isArray((act as Record<string, unknown>).toolCalls)
+                    ? (act as Record<string, unknown>).toolCalls
+                    : Array.isArray((act as Record<string, unknown>).tool_calls)
+                      ? (act as Record<string, unknown>).tool_calls
+                      : []) as Array<Record<string, unknown>>;
+                  const first = tcs[0] ?? {};
+                  const tcid = String(
+                    first.id ??
+                      first.toolCallId ??
+                      (first as Record<string, unknown>).tool_call_id ??
+                      "",
+                  );
+                  console.error(
+                    `[stream] requiredAction missing threadId/toolCallId — filtered before reduce (threadId=${tid ? "ok" : "empty"} toolCallId=${tcid ? "ok" : "empty"} type=${act?.type})`,
+                  );
+                }
+              }
+            }
+          }
+        }
+
         const roles = threadMap.snapshot();
         const next = reduce(state, event, { roles });
         state = next;
@@ -311,6 +383,25 @@ export async function buildStream(input: {
         sendPreamble();
         startHeartbeat();
         safeEnqueue(sseLine("event", eventWithRoles));
+        // Stranded gate: surface as turn.error and flip paper to error so
+        // the cockpit never renders a paused run with no Allow/Deny buttons.
+        if (turnDoneStranded) {
+          const detail = "turn.done carried requiredActions but no gate had a persistable threadId/toolCallId";
+          console.error(`[stream] ${detail} — surfacing turn.error`);
+          safeEnqueue(sseLine("turn.error", { message: detail }));
+          try {
+            await query(`UPDATE papers SET status = 'error', updated_at = now() WHERE id = $1 AND NOT halted`, [paperId]);
+          } catch (e2) {
+            console.error("[stream] stranded papers.status=error update failed:", (e2 as Error).message);
+          }
+          // The reduced state is now done (not paused) after filtering; push
+          // an error terminal so the stream closes and the client flips to error.
+          safeEnqueue(sseLine("turn.error", { state: "error" }));
+          try {
+            await query(`UPDATE papers SET status = 'error', updated_at = now() WHERE id = $1 AND NOT halted`, [paperId]);
+          } catch { /* best-effort */ }
+          return { terminal: true, next: { ...next, status: "error", terminal: { kind: "error" } } as typeof next };
+        }
         // Phase 5.1 — cap guard. Usage arrives with the metrics on
         // turn.done; when the paper's cap is crossed, enforceCap locks
         // the run (halt_reason 'cap') and writes the audit row. The
@@ -321,7 +412,8 @@ export async function buildStream(input: {
           // `tool.approval_required` gate inside the terminal
           // turn.done payload (via `requiredActions[]`). Iterate
           // requiredActions here and insert any missing gate rows.
-          const requiredActions = (event.payload.requiredActions as Array<Record<string, unknown>> | undefined) ?? [];
+          // Use the filtered list if we filtered before reduce.
+          const requiredActions = (turnDoneFiltered ?? (event.payload.requiredActions as Array<Record<string, unknown>> | undefined) ?? []);
           for (const act of requiredActions) {
             // Both `tool.approval_required` and `tool.response_required` need
             // a human-in-the-loop surface. TrueForge bundles them inside the
@@ -344,8 +436,6 @@ export async function buildStream(input: {
             );
             // Both thread_id AND tool_call_id are required by the
             // resume contract (TrueForge returns 400 if either is empty).
-            // Skip the insert — the event still flows to the audit/cockpit,
-            // but no gate row is created that the approve route can't resume.
             if (!threadId || !toolCallId) {
               console.error(
                 `[stream] requiredAction missing threadId/toolCallId — skipping gate insert (threadId=${threadId ? "ok" : "empty"} toolCallId=${toolCallId ? "ok" : "empty"} type=${act?.type})`,

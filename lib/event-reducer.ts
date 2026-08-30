@@ -195,16 +195,45 @@ export function reduce(state: LiveState, event: LiveEvent, opts: ReduceOptions =
     }
 
     case "turn.done": {
-      const requiredActions = (event.payload.requiredActions as unknown[] | undefined) ?? [];
+      const rawActions = (event.payload.requiredActions as unknown[] | undefined) ?? [];
       const metrics = (event.payload.metrics as { totalTokens?: number; totalCostInUsd?: number } | undefined) ?? {};
       next.metrics = {
         totalTokens: metrics.totalTokens ?? 0,
         costDisplay: formatCost(metrics.totalCostInUsd),
       };
-      if (requiredActions.length > 0) {
+      // Only pause if at least one requiredAction is a persistable gate
+      // (has threadId + toolCallId). Unpersistable gates are a wire error
+      // — the stream route filters them and surfaces turn.error instead, but
+      // the reducer must also not pause on them in isolation (e.g. unit tests
+      // that call reduce directly).
+      const hasPersistableGate = rawActions.some((a) => {
+        if (!a || typeof a !== "object") return false;
+        const act = a as Record<string, unknown>;
+        if (act.type !== "tool.approval_required" && act.type !== "tool.response_required") return true;
+        const tid = String(act.threadId ?? act.thread_id ?? "");
+        const tcs = (Array.isArray(act.toolCalls)
+          ? act.toolCalls
+          : Array.isArray(act.tool_calls)
+            ? act.tool_calls
+            : []) as Array<Record<string, unknown>>;
+        const first = tcs[0] ?? {};
+        const tcid = String(first.id ?? first.toolCallId ?? (first as Record<string, unknown>).tool_call_id ?? "");
+        return Boolean(tid && tcid);
+      });
+      if (rawActions.length > 0 && hasPersistableGate) {
+        const gateCount = rawActions.filter((a) => {
+          if (!a || typeof a !== "object") return false;
+          const act = a as Record<string, unknown>;
+          return act.type === "tool.approval_required" || act.type === "tool.response_required";
+        }).length;
         next.status = "paused";
         next.terminal = { kind: "paused" };
-        return appendPulse(next, `${time} [agent]    turn paused on ${requiredActions.length} gate(s)`);
+        return appendPulse(next, `${time} [agent]    turn paused on ${gateCount || rawActions.length} gate(s)`);
+      }
+      if (rawActions.length > 0 && !hasPersistableGate) {
+        next.status = "error";
+        next.terminal = { kind: "error" };
+        return appendPulse(next, `${time} [agent]    turn errored (unpersistable gate)`);
       }
       const stateStr = String(event.payload.state ?? "done");
       if (stateStr === "error") {
