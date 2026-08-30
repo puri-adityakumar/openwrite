@@ -93,7 +93,12 @@ export function rowsFromLiveEvents(events: AnyEvent[]): AuditRow[] {
         });
         break;
       }
-      // model.message.delta / thread.done / turn.error-less noise:
+      case "turn.error": {
+        const msg = String(p.message ?? p.strandedDetail ?? "turn errored");
+        rows.push({ ts: hhmmss(e.createdAt), icon: "✗", message: msg });
+        break;
+      }
+      // model.message.delta / thread.done noise:
       // intentionally not timeline rows.
       default:
         break;

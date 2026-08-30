@@ -398,26 +398,59 @@ export async function buildStream(input: {
             });
             if (stopped) {
               safeEnqueue(sseLine("cap.exceeded", { totalTokens: m.totalTokens ?? 0 }));
-              // Cap lock took precedence — close as error terminal but do NOT
-              // overwrite the halted status (enforceCap already set halted=true).
               safeEnqueue(sseLine("turn.error", { message: "cap exceeded", state: "error" }));
               return { terminal: true, next };
             }
           } catch (e) {
+            // enforceCap is two-phase: it can throw AFTER the cap lock (UPDATE
+            // papers halted=true) but before the cap.exceeded audit, or BEFORE
+            // the lock due to a DB error. Re-read the paper to disambiguate.
             console.error("[stream] stranded cap check failed:", (e as Error).message);
+            try {
+              const st = await query<{ halted: boolean; halt_reason: string | null }>(
+                `SELECT halted, halt_reason FROM papers WHERE id = $1 LIMIT 1`,
+                [paperId],
+              );
+              const row = st.rows[0];
+              if (row?.halted && row.halt_reason === "cap") {
+                // Lock committed — treat as cap even though audit may have failed.
+                safeEnqueue(sseLine("cap.exceeded", { totalTokens: m.totalTokens ?? 0 }));
+                safeEnqueue(sseLine("turn.error", { message: "cap exceeded (audit pending)", state: "error" }));
+                return { terminal: true, next };
+              }
+            } catch (e2) {
+              console.error("[stream] stranded cap re-read failed:", (e2 as Error).message);
+            }
+            // Cap check indeterminate or failed before lock — fail closed with
+            // an explicit cap-check error rather than masquerading as a gate error.
+            const capDetail = `cap check failed: ${(e as Error).message}`;
+            safeEnqueue(sseLine("turn.error", { message: capDetail, state: "error" }));
+            try {
+              await appendAudit(paperId, {
+                id: `cap_err_${Date.now()}`,
+                seq: 0,
+                createdAt: new Date().toISOString(),
+                type: "turn.error",
+                payload: { message: capDetail, metrics: m },
+              } as unknown as LiveEvent);
+            } catch { /* best-effort */ }
+            try {
+              await query(`UPDATE papers SET status = 'error', updated_at = now() WHERE id = $1 AND NOT halted`, [paperId]);
+            } catch { /* best-effort */ }
+            return { terminal: true, next: { ...next, status: "error", terminal: { kind: "error" } } as typeof next };
           }
           const detail = "turn.done carried requiredActions but no gate had a persistable threadId/toolCallId";
           console.error(`[stream] ${detail} — surfacing turn.error`);
           safeEnqueue(sseLine("turn.error", { message: detail }));
-          // Persist an explicit audit row for the synthetic error so the trail
-          // is reconstructible even after the malformed gate ages out of logs.
+          // Persist an explicit audited error as turn.error (not turn.done) so
+          // rowsFromLiveEvents renders it as an error, not a successful turn.
           try {
             await appendAudit(paperId, {
               id: `stranded_${Date.now()}`,
               seq: 0,
               createdAt: new Date().toISOString(),
-              type: "turn.done",
-              payload: { state: "error", strandedDetail: detail, originalRequiredActions: event.payload.requiredActions },
+              type: "turn.error",
+              payload: { message: detail, strandedDetail: detail, originalRequiredActions: event.payload.requiredActions },
             } as unknown as LiveEvent);
           } catch { /* best-effort audit for stranded */ }
           try {
