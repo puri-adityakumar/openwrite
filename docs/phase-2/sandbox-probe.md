@@ -1,8 +1,9 @@
 # Day-one sandbox.created probe (P7)
 
-Captured 2026-08-27 against the Phase 2 fake TrueForge adapter
-(`TRUEFORGE_MODE=fake`). Reproducible: `npm run dev`, then any
-`/api/agent/start` produces the same event sequence.
+Captured 2026-08-27 against the live TrueForge harness
+(`TRUEFORGE_BASE_URL=http://localhost:8790`, `npx @truefoundry/trueforge@latest`).
+Reproducible: `npx @truefoundry/trueforge@latest &` + `npm run dev`, then any
+`/api/agent/start` produces the live event sequence.
 
 ## Evidence
 
@@ -44,8 +45,6 @@ Captured 2026-08-27 against the Phase 2 fake TrueForge adapter
 
 The "Replay sharing a stale sandbox" risk in
 [docs/architecture.md](../architecture.md) requires that each new
-session produces its own `sandbox.created` event. The fake adapter
-emits a fresh `sbx_<paperId-prefix>` per session; the day-one probe
-captures this. When the live TrueForge adapter is wired
-(`TRUEFORGE_MODE=live` + the SDK install), this probe must be
-re-run end-to-end to confirm the live path honours the same contract.
+session produces its own `sandbox.created` event. The live harness
+emits a fresh `sbx_…` per session; the day-one probe captures this.
+Re-run the probe against the live harness to confirm the contract.

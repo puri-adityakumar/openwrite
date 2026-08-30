@@ -4,7 +4,7 @@
 
 **How to use:** Run top-to-bottom. P0 = smoke gate, P1 = regression (including Issue #1), P2 = full surface. Tick `□` → `☑`. Failed item = file issue with ID.
 
-Prerequisites: `npm install && docker compose up` → Postgres 5433, Redis 6380, Next 13000. `npm run parity` = 0, `npm test` = green. Mode default `fake` (no TrueForge). For live gate/SSE checks set `TRUEFORGE_MODE=live` + `npx @truefoundry/trueforge`.
+Prerequisites: `npm install && docker compose up` → Postgres 5433, Redis 6380, Next 13000 + `npx --yes @truefoundry/trueforge@latest` (live TrueForge on 8790, `TRUEFORGE_BASE_URL=http://localhost:8790`). `npm run parity` = 0, `npm test` = green.
 
 ---
 
@@ -71,7 +71,7 @@ Prerequisites: `npm install && docker compose up` → Postgres 5433, Redis 6380,
 - [ ] **3.2.1 Pause from running/queued** — `POST /halt {paperId, action:"pause"}` → 200 `paused` not `halted`, `halt.pause` audit, stream cancelled via `cancelActiveStream` (`halt:60-74`, `stream-registry:25`). Button `data-testid halt-btn data-state pause → Stop` (`halt.spec.ts:31`).
 - [ ] **3.2.2 Stop locks** — `POST /halt {action:"stop"}` from `running` or `paused` → 200 `done halted=true halt_reason user`, `halt.stop` audit, TrueForge `cancelSession` POST 200/404 ok (`halt:76-95`). After lock: `GET /stream` 409, `POST /approve` 409, further `halt` 409 (`stream:106`, `approve:133`). UI Pill `data-state locked Stopped` (`halt-button:38`).
 - [ ] **3.2.3 Negative halt** — `pause` from `done/paused/error` → 409 `cannot pause a ${status} run` (`halt:61`). Missing `paperId` / invalid `action` → 400. Non-owner → 404. Upstream cancel fail → 502 `TrueForge cancelSession failed` not locked retryable (`halt:82`).
-- [ ] **3.2.4 Cap hard-stop** — Create with `capTokens:1`, fake 18402 tokens → `enforceCap` flips `done halted=true halt_reason cap`, emits `cap.exceeded` SSE + audit, chip `data-testid cap-chip data-exceeded true` red (`cap-server:14-43`, `halt.spec.ts:83-122`).
+- [ ] **3.2.4 Cap hard-stop** — Create with `capTokens:1`, tokens exceed cap (e.g. 18402) → `enforceCap` flips `done halted=true halt_reason cap`, emits `cap.exceeded` SSE + audit, chip `data-testid cap-chip data-exceeded true` red (`cap-server:14-43`, `halt.spec.ts:83-122`).
 
 ### 3.3 Replay (P1)
 - [ ] **3.3.1 Replay while running → 409** — `POST /replay` while `status=running` → 409 `a run is live — halt or wait before replaying` (`replay:28`).
@@ -85,11 +85,11 @@ Prerequisites: `npm install && docker compose up` → Postgres 5433, Redis 6380,
 ### 4.1 REGRESSION — Issue #1 empty thread_id/tool_call_id → 400 (P0 must-pass)
 > Root cause: `insertGate` called with `""` from `requiredActions[].toolCalls` missing/nested casing mismatch, then `POST /approve` resumes with empty `thread_id/tool_call_id` → TrueForge 400 `expected string, received undefined` at `input[0].thread_id/tool_call_id`.
 
-- [ ] **4.1.1 Stream skips invalid gate insert (tool.approval_required)** — Fake `NoIdTF` with `payload:{threadId:"thr_noid"}` no `toolCallId` → `buildStream` must NOT insert gate: `SELECT gates WHERE paper_id` = 0, still audit persists. Log `[stream] tool.approval_required without threadId/toolCallId — skipping gate insert` (`stream:235-238`, `tests/sse-route:143-202`).
+- [ ] **4.1.1 Stream skips invalid gate insert (tool.approval_required)** — `NoIdTF` mock with `payload:{threadId:"thr_noid"}` no `toolCallId` → `buildStream` must NOT insert gate: `SELECT gates WHERE paper_id` = 0, still audit persists. Log `[stream] tool.approval_required without threadId/toolCallId — skipping gate insert` (`stream:235-238`, `tests/sse-route:143-202`).
 - [ ] **4.1.2 Stream skips invalid requiredActions** — Live bundle `turn.done requiredActions=[{type:"tool.approval_required", threadId:null, toolCalls:[]}]` → no row, `GET /api/papers/<id>/gates` → `gate:null`, card `gate-empty` (`stream:326-334` guard `if (!threadId||!toolCallId) continue`). Verify log `[stream] requiredAction missing threadId/toolCallId — skipping gate insert`.
 - [ ] **4.1.3 Mixed valid/invalid bundle** — `requiredActions=[{type:"tool.approval_required", threadId:"thr1", toolCalls:[{id:"tc1"}]}, {type:"tool.approval_required", threadId:"", toolCalls:[]}]` → exactly 1 gate `thr1/tc1` inserted, no `tool_call_id=''` row.
 - [ ] **4.1.4 Casing variants** — `act.tool_calls` vs `toolCalls`, `act.thread_id` vs `threadId`, `first.id` vs `toolCallId` all resolve correctly; `tc_live_1` + `thr_live` gate Approve → 200 not 502 (`stream:321-324` dual fallback).
-- [ ] **4.1.5 Approve never 400** — `POST /approve {gateId}` on valid pending gate → 200 `{gate: status allowed/denied, resumedTurnId}`; on invalid (empty ids would have been prevented) would have been 502 `approval failed: TrueForge 400…` — assert NEVER 502 for fake gates. Empty ids path also covers `tool.response_required` (severity reversible) same guard (`stream:320,343`).
+- [ ] **4.1.5 Approve never 400** — `POST /approve {gateId}` on valid pending gate → 200 `{gate: status allowed/denied, resumedTurnId}`; on invalid (empty ids would have been prevented) would have been 502 `approval failed: TrueForge 400…` — assert NEVER 502. Empty ids path also covers `tool.response_required` (severity reversible) same guard (`stream:320,343`).
 - [ ] **4.1.6 Idempotency** — Duplicate `tool.approval_required` same `(threadId,toolCallId)` re-streamed → 1 row `ON CONFLICT DO NOTHING` (`gates:99-104`, `tests/gates:62`).
 - [ ] **4.1.7 Fix in current branch** — `app/api/agent/stream/route.ts:228,323` now `if (!threadId||!toolCallId)` before `insertGate` (diff on `chore/testing-and-bugfixing`). Confirm log message includes `threadId=ok|empty toolCallId=ok|empty`.
 
@@ -103,14 +103,14 @@ Prerequisites: `npm install && docker compose up` → Postgres 5433, Redis 6380,
 ### 4.3 Verify gate G1 spec (P1) — `components/gates/verify-card.tsx:88`, `docs/approval-gates.md:23`
 - [ ] **4.3.1 Card chrome** — When `liveState.status=paused`, `VerifyGatePanel` fetches `GET /api/papers/<id>/gates` → renders `verify-card` (`CockpitClient:173,281`). Header `◀ Verify gate · irreversible · expires in M:SS` `verify-header`, `verify-severity`, `verify-countdown /\d+:\d{2}/`, `verify-tool: bash` (`verify-card:176-191`, `gates.spec:70`).
 - [ ] **4.3.2 11 items** — All `data-testid g1-*` visible: `provenance, intent, command (pre gate.payload.command||tool_name), budget, envelope, risk-flags, data-scope, persistence, kill-switch, identity, liability` (`verify-card:193-381`, `tests/verify-card:86`).
-- [ ] **4.3.3 Allow disabled until owner match** — Input `verify-owner-input`, typed `tensorflow` (from fake `repoOwner` `trueforge:181`) enables Allow (`verify-card:392`). Empty `repoOwner` → forever disabled.
+- [ ] **4.3.3 Allow disabled until owner match** — Input `verify-owner-input`, typed expected owner (e.g. `tensorflow` from payload `repoOwner`) enables Allow (`verify-card:392`). Empty `repoOwner` → forever disabled.
 - [ ] **4.3.4 Hold 3s** — Press+hold `verify-allow` 3.2s via `page.mouse` (not boundingBox) → `onAllow` once, `verify-allow-fill` progress. Release before 3s → no call (`verify-card:113-149`, `tests/verify-card:170-191`). Parent re-render mid-hold does NOT reset (`onAllowRef:113`).
 - [ ] **4.3.5 Mid-hold expiry cancels** — If `expires_at` hits 0 during hold → `clearInterval` + `setHolding false` no `onAllow` (`verify-card:129`, `tests/verify-card:194`).
 - [ ] **4.3.6 Expired copy disabled** — When `status expired` or `seconds===0` → `verify-expired` shows `Approval expired — restart verification.`, all Allow/Deny/Kill/Edit disabled (`verify-card:165-166,441`, `gates:256`, `gates.spec:240`).
 - [ ] **4.3.7 Deny** — `verify-deny` prompt `network mode unclear` → 200 `denied` `decided_reason` persisted, no new sandbox (`gates.spec:141-185`, `trueforge:240` deny sequence).
 
 ### 4.4 Publish / Save (P2)
-- [ ] **4.4.1 Publish** — `publish-card` `irreversible`, `publish-countdown`, `publish-diff` 92.4→91.7 `Δ −0.7` uses `−` U+2212 (`export-md:31`, `publish-card:75,93`), export link `/paper/<slug>/export` (`e2e/gates:99` but not in fake E2E).
+- [ ] **4.4.1 Publish** — `publish-card` `irreversible`, `publish-countdown`, `publish-diff` 92.4→91.7 `Δ −0.7` uses `−` U+2212 (`export-md:31`, `publish-card:75,93`), export link `/paper/<slug>/export` (`e2e/gates:99`).
 - [ ] **4.4.2 Save** — `save-card` `reversible`, `save-count 2 annotations`, rows `save-annotation data-annotation-id`, empty `Nothing to merge.` (`save-card:51,65,79`).
 - [ ] **4.4.3 Expiry disables** — Both cards same countdown `expired = status expired || seconds===0` disables Allow/Deny, shows expired copy (`publish:54`, `save:41`).
 
@@ -172,7 +172,7 @@ Prerequisites: `npm install && docker compose up` → Postgres 5433, Redis 6380,
 ---
 
 ## 7. Env Banner & Tour (P2)
-- [ ] **7.1 Banner polling** — `GET /api/env-status` 200 `{mode:live|fake, status:{gmi,daytona}}` no key leak (`env-status:16`). `EnvBannerHost` fetches on mount + 15s + `window.focus` (`env-banner:13-34`). When `mode==="fake"` host renders `null` even if missing (`EnvBannerHost:53`). When live with `DAYTONA_API_KEY` missing → `data-testid env-banner` + `env-banner-sandbox-badge Sandbox preview` + `env-banner-curl` + `env-banner-copy` (`env-banner:46-86`, `banner.spec.ts:14`).
+- [ ] **7.1 Banner polling** — `GET /api/env-status` 200 `{mode:"live", status:{gmi,daytona}}` no key leak (`env-status:16`). `EnvBannerHost` fetches on mount + 15s + `window.focus` (`env-banner:13-34`). When `DAYTONA_API_KEY` missing → `data-testid env-banner` + `env-banner-sandbox-badge Sandbox preview` + `env-banner-curl` + `env-banner-copy` (`env-banner:46-86`, `banner.spec.ts:14`).
 - [ ] **7.2 Tour** — `tour.test.tsx` 7 slides modal pinned.
 
 ---
@@ -186,7 +186,7 @@ Prerequisites: `npm install && docker compose up` → Postgres 5433, Redis 6380,
 5. **P2 auth negatives & PDF allowlist (10 min):** 1.2 → 2.2-2.3.
 6. **P2 SSE edge & isolation:** 5.1-5.3, 1.3.2-1.3.3 tamper session/turn, `e2e/stranger e2e/auth`.
 
-**Automation mapping:** Existing specs cover most P0: `auth.spec.ts:10-100` (guard, signup/login, short pw), `stranger.spec.ts:15-104` (landing → cockpit first paint, mode dial), `live-run.spec.ts:31-66` (full fake run), `cockpit-live.spec.ts:30-51` (mid-run screenshot), `audit.spec.ts:12-96`, `tabs.spec.ts:14-36`, `reader-ask.spec.ts:14-41`, `export.spec.ts:14-47`, `halt.spec.ts:31-122`, `gates.spec.ts:62-250` (TC1-TC3), `banner.spec.ts:14`. New automation needed for §4.1 mixed bundle & §2.3 PDF traversal cases → add `tests/sse-route.test.ts` extension.
+**Automation mapping:** Existing specs cover most P0: `auth.spec.ts:10-100` (guard, signup/login, short pw), `stranger.spec.ts:15-104` (landing → cockpit first paint, mode dial), `live-run.spec.ts:31-66` (live run), `cockpit-live.spec.ts:30-51` (mid-run screenshot), `audit.spec.ts:12-96`, `tabs.spec.ts:14-36`, `reader-ask.spec.ts:14-41`, `export.spec.ts:14-47`, `halt.spec.ts:31-122`, `gates.spec.ts:62-250` (TC1-TC3), `banner.spec.ts:14`. New automation needed for §4.1 mixed bundle & §2.3 PDF traversal cases → add `tests/sse-route.test.ts` extension.
 
 ---
 

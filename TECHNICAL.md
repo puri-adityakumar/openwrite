@@ -5,8 +5,8 @@ each "real" row cites its tests; each "preview" row names its trigger.
 
 **Repo layout**: Next.js App Router (TypeScript, Tailwind) · Postgres
 (schema + idempotent seed + parity guard) · SSE event pipeline (P7
-constraints) · a TrueForge adapter boundary with two backends (`fake`,
-`live`) · Playwright E2E on desktop + an iPad judge profile.
+constraints) · a live-only TrueForge adapter · Playwright E2E on desktop
++ an iPad judge profile.
 
 ## Real today
 
@@ -27,18 +27,18 @@ constraints) · a TrueForge adapter boundary with two backends (`fake`,
 
 | Surface | What is previewed | What makes it real |
 |---|---|---|
-| TrueForge adapter | `TRUEFORGE_MODE=fake` (default): a deterministic in-process double emits the full event vocabulary, including the paused terminal and post-resume sequences. The `live` backend exists behind a lazy SDK import — the package is intentionally not installed. | `npm install @truefoundry/trueforge-sdk` + `TRUEFORGE_MODE=live TRUEFORGE_BASE_URL=…` |
-| Daytona sandbox | No `DAYTONA_API_KEY` in dev ⇒ "Sandbox preview" mode: `sandbox.created` events are fake, no real isolation is exercised. The envelope on the Verify card renders "—" when the payload doesn't specify it. | Requires **both**: the TrueForge SDK installed + `TRUEFORGE_MODE=live` (see the adapter row above) **and** `DAYTONA_API_KEY` set. Setting the key alone only changes the env banner — the adapter stays fake. |
+| TrueForge adapter | Live-only: talks HTTP to `TRUEFORGE_BASE_URL` (default `http://localhost:8790`). Requires `npx @truefoundry/trueforge@latest` harness. | Set `TRUEFORGE_BASE_URL` + ensure the harness is reachable (health: `GET /api/v1/...`). |
+| Daytona sandbox | No `DAYTONA_API_KEY` ⇒ "Sandbox preview" badge; no real isolation is exercised. The envelope on the Verify card renders "—" when the payload doesn't specify it. | Set `DAYTONA_API_KEY` (with a live TrueForge harness). |
 | Seed first paint | The demo paper renders from `seed_audits`/`seed_claims` fixture data (offline-capable by design, P9) | Live runs replace it per paper once a session starts |
-| Publish/Save gates | Cards + plumbing + locks are shipped and unit-tested, but the fake adapter emits only verify-kind gates, so they are not E2E-reachable yet | A real adapter event with `gateKind: "publish" \| "save"` |
+| Publish/Save gates | Cards + plumbing + locks are shipped and unit-tested; only `verify` gates are emitted by the current agent today | A real adapter event with `gateKind: "publish" \| "save"` |
 | Live-run Summary/Claims | Live runs render placeholder Summary/Claims until the extract step writes them; the seeded paper shows the real shape | Extract-step wiring (post-hackathon backlog) |
 | USD cost cap | The custom provider reports `total_cost_in_usd === 0`, so the token cap is the effective guard and cost displays as "—" (never "$0.00") | A provider that reports real cost |
 
 ## Known constraints
 
-- The TrueForge server itself is not in this repo (vendored compose file
-  expects a sibling checkout); the demo path runs entirely on the fake
-  adapter + local Postgres/Redis.
+- The TrueForge server itself is not in this repo; run
+  `npx @truefoundry/trueforge@latest` (or the vendored compose) and set
+  `TRUEFORGE_BASE_URL`. The app requires a live harness (no in-process fake).
 - The active-stream registry (Pause suspension) is single-process —
   correct for the single-container demo; a multi-instance deployment
   would move it to Redis pub/sub.

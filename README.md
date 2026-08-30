@@ -58,7 +58,7 @@ the containers are up, open http://localhost:13000.
 ### Real TrueForge + GMI path (live LLM)
 
 For the demo and for the WeMakeDevs × TrueFoundry submission, Recap
-talks to a real TrueForge harness (not the in-process fake). The
+talks to a real TrueForge harness (live-only). The
 quickest path is `npx` standalone:
 
 ```bash
@@ -76,9 +76,8 @@ curl -X POST http://localhost:8790/api/v1/settings/model-providers \
         "models":[{"model_id":"MiniMaxAI/MiniMax-M3","name":"gmi-minimax",
                    "properties":{"context_length":200000,"max_output_tokens":8192}}]}}'
 
-# 3. set TRUEFORGE_MODE=live in .env and restart the app
-echo "TRUEFORGE_MODE=live" >> .env
-echo "TF_BASE_URL=http://localhost:8790" >> .env
+# 3. set TRUEFORGE_BASE_URL in .env and restart the app
+echo "TRUEFORGE_BASE_URL=http://localhost:8790" >> .env
 npm run build && npm run start
 ```
 

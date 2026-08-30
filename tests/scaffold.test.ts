@@ -50,11 +50,11 @@ describe("Phase 0 scaffold", () => {
       "GMI_API_KEY",
       "JWT_SECRET",
       "DATABASE_URL",
-      "TF_BASE_URL",
+      "TRUEFORGE_BASE_URL",
     ];
     for (const k of required) {
       expect(env.includes(k), `.env.example missing key: ${k}`).toBe(true);
-      expect(env.includes(`http://localhost:18790`), ".env.example TF_BASE_URL must default to localhost:18790").toBe(true);
+      expect(env.includes(`http://localhost:8790`), ".env.example TRUEFORGE_BASE_URL must default to localhost:8790").toBe(true);
     }
   });
 

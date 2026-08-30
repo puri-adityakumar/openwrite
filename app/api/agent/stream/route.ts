@@ -214,9 +214,8 @@ export async function buildStream(input: {
         // the time we get here; the DB row is the durable mirror.
         //
         // Qodo #6 — the documented TrueForge event shape nests the
-        // toolCallId under `toolCalls[*]`. The in-repo fake uses flat
-        // `toolCallId` / `toolName` for readability; accept both so
-        // the live adapter works without a code change.
+        // toolCallId under `toolCalls[*]`. Accept flat, camelCase,
+        // and snake_case shapes for compatibility.
         if (event.type === "tool.approval_required") {
           const flat = event.payload as Record<string, unknown>;
           const toolCalls = Array.isArray(flat.toolCalls)
@@ -318,20 +317,15 @@ export async function buildStream(input: {
         // terminal update below skips halted papers, so the hard stop
         // sticks.
         if (event.type === "turn.done") {
-          // Qodo round 3 — the real TrueForge wire surfaces every
-          // `tool.approval_required` gate bundled inside the terminal
-          // turn.done payload (via `requiredActions[]`). The fake
-          // adapter emits a separate tool.approval_required event for
-          // each one, which hits the gate-insert block above. When
-          // running live, we may only get the bundle — so iterate
+          // Qodo round 3 — TrueForge may bundle every
+          // `tool.approval_required` gate inside the terminal
+          // turn.done payload (via `requiredActions[]`). Iterate
           // requiredActions here and insert any missing gate rows.
           const requiredActions = (event.payload.requiredActions as Array<Record<string, unknown>> | undefined) ?? [];
           for (const act of requiredActions) {
             // Both `tool.approval_required` and `tool.response_required` need
             // a human-in-the-loop surface. TrueForge bundles them inside the
-            // terminal `turn.done` payload, so the live `tool.approval_*`
-            // event path (the one the fake adapter uses) doesn't fire when
-            // running against real TrueForge. Treat both as verify gates.
+            // terminal `turn.done` payload. Treat both as verify gates.
             if (act?.type !== "tool.approval_required" && act?.type !== "tool.response_required") continue;
             const threadId = String(act.threadId ?? act.thread_id ?? "");
             const tcs = (Array.isArray(act.toolCalls) ? act.toolCalls : Array.isArray(act.tool_calls) ? act.tool_calls : []) as Array<Record<string, unknown>>;
@@ -436,9 +430,8 @@ export async function buildStream(input: {
 }
 
 // Assigns a monotonic sequence number to each event from the iterator when
-// the upstream doesn't supply one (the fake adapter supplies its own).
-// Real TrueForge events always carry a ULID-derived seq, so this is a
-// safety net for tests + any future adapters.
+// the upstream doesn't supply one. TrueForge events normally carry a
+// ULID-derived seq; this is a safety net for tests.
 async function* wrapWithSeq(iter: AsyncIterableIterator<LiveEvent>): AsyncIterableIterator<LiveEvent> {
   let n = 0;
   for await (const e of iter) {

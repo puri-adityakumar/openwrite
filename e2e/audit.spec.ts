@@ -77,9 +77,8 @@ test.describe("Phase 5.2 — audit page: live run", () => {
     await expect(rows.filter({ hasText: "audit e2e deny" })).toHaveCount(1);
     // Footer shape: tokens from the last metrics turn, the Cost "—"
     // rule, a duration. (Exact values are unit-pinned in
-    // tests/audit-page.test.tsx; the fake's fixed fixture dates make
-    // the live numbers vary.)
-    await expect(page.getByTestId("audit-footer")).toContainText(/Total tokens 18,[\d,]+/);
+    // tests/audit-page.test.tsx; live numbers vary.)
+    await expect(page.getByTestId("audit-footer")).toContainText(/Total tokens [\d,]+/);
     await expect(page.getByTestId("audit-footer")).toContainText("Cost —");
     await expect(page.getByTestId("audit-footer")).toContainText(/Duration \d+/);
 

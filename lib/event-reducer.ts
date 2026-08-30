@@ -110,8 +110,8 @@ export type ReduceOptions = {
 
 export function reduce(state: LiveState, event: LiveEvent, opts: ReduceOptions = {}): LiveState {
   // Sequence-number guard: drop duplicates and out-of-order events.
-  // Treat seq: 0 / undefined as "uncursorable" (test fakes, legacy callers)
-  // and always accept them. Real TrueForge events always carry a positive seq.
+  // Treat seq: 0 / undefined as "uncursorable" (legacy callers)
+  // and always accept them. TrueForge events normally carry a positive seq.
   if (typeof event.seq === "number" && event.seq > 0) {
     if (event.seq <= state.seq) return state;
   }

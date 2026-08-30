@@ -12,10 +12,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET(): Promise<NextResponse> {
   const daytona = !!process.env.DAYTONA_API_KEY && process.env.DAYTONA_API_KEY !== "replace-me";
-  const mode = (process.env.TRUEFORGE_MODE ?? "fake").toLowerCase() === "live" ? "live" : "fake";
   return NextResponse.json({
     ok: true,
-    mode,
+    mode: "live" as const,
     status: {
       gmi: gmiConfigured(),
       daytona,

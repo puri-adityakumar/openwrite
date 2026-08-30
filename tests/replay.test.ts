@@ -1,6 +1,6 @@
 import { describe, it, expect, afterAll, beforeEach } from "vitest";
 import { query, closePool } from "../lib/db";
-import { __setTrueForgeClientForTest, getTrueForgeClient, FakeTrueForgeClient, type TrueForgeClient } from "../lib/trueforge";
+import { __setTrueForgeClientForTest, getTrueForgeClient, type TrueForgeClient } from "../lib/trueforge";
 
 // Phase 5.3 — replay tests.
 //
@@ -15,6 +15,42 @@ import { __setTrueForgeClientForTest, getTrueForgeClient, FakeTrueForgeClient, t
 
 // Dedicated fixture paper — never the seed paper (…010).
 const PID = "00000000-0000-0000-0000-000000000014";
+
+// Live-only mock: no network, live contract (used by replayPaper unit tests)
+class ReplayLiveMock implements TrueForgeClient {
+  private readonly mem = new Map<string, string>();
+  async startSession(input: { paperId: string; mode: string; source: string }) {
+    const sessionId = `sess_${input.paperId.slice(0, 8)}_${Math.random().toString(36).slice(2, 6)}`;
+    const turnId = `turn_${Math.random().toString(36).slice(2, 8)}`;
+    return { sessionId, turnId };
+  }
+  async createTurnStream(sessionId: string, turnId: string) {
+    const key = `${sessionId}:${turnId}`;
+    let sid = this.mem.get(key);
+    if (!sid) {
+      sid = `sbx_${Math.random().toString(36).slice(2, 8)}`;
+      this.mem.set(key, sid);
+    }
+    const events = [
+      { type: "turn.created", payload: {} },
+      { type: "sandbox.created", payload: { sandboxId: sid } },
+    ] as unknown as { type: string; payload: { sandboxId?: string } }[];
+    let i = 0;
+    const iterator: AsyncIterableIterator<{ type: string; payload: { sandboxId?: string } }> = {
+      next: async () => {
+        const v = events[i++];
+        if (!v) return { value: undefined, done: true };
+        return { value: v, done: false };
+      },
+      return: async () => ({ value: undefined, done: true }),
+      throw: async (e) => { throw e; },
+      [Symbol.asyncIterator]: () => iterator,
+    } as unknown as AsyncIterableIterator<{ type: string; payload: { sandboxId?: string } }>;
+    return { iterator: iterator as unknown as AsyncIterableIterator<import("../lib/event-reducer").LiveEvent>, cancel: () => {} };
+  }
+  async resumeTurnWithApproval() { return { turnId: `turn_resume_${Math.random().toString(36).slice(2, 6)}` }; }
+  async cancelSession() {}
+}
 
 async function ensurePaper() {
   await query(
@@ -49,6 +85,7 @@ async function resetPaper(opts: { status?: string; halted?: boolean } = {}) {
 
 beforeEach(async () => {
   await resetPaper();
+  __setTrueForgeClientForTest(new ReplayLiveMock());
 });
 
 afterAll(async () => {
@@ -140,11 +177,9 @@ describe("getReplayStatus — the freshness proof", () => {
   });
 });
 
-describe("fake adapter — per-session sandbox freshness", () => {
+describe("live adapter — per-session sandbox freshness (via injected mock)", () => {
   it("two different sessions yield two different sandbox.created ids", async () => {
-    // Explicitly inject a FakeTrueForgeClient regardless of TRUEFORGE_MODE
-    // (these tests exercise the fake adapter's session/turn keying).
-    __setTrueForgeClientForTest(new FakeTrueForgeClient());
+    __setTrueForgeClientForTest(new ReplayLiveMock());
     const client: TrueForgeClient = getTrueForgeClient();
     const s1 = await client.startSession({ paperId: PID, mode: "review", source: "fixture:demo" });
     const s2 = await client.startSession({ paperId: PID, mode: "review", source: "fixture:demo" });
@@ -172,7 +207,7 @@ describe("fake adapter — per-session sandbox freshness", () => {
   });
 
   it("re-streaming the SAME turn is stable (reload-safe ids)", async () => {
-    __setTrueForgeClientForTest(new FakeTrueForgeClient());
+    __setTrueForgeClientForTest(new ReplayLiveMock());
     const client = getTrueForgeClient();
     const s = await client.startSession({ paperId: PID, mode: "review", source: "fixture:demo" });
     const a = await client.createTurnStream(s.sessionId, s.turnId);
