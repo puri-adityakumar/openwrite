@@ -1,8 +1,7 @@
 // Phase 5.3 — replay. One click re-runs the same paper on a NEW
-// TrueForge session (and per the fake/live adapter contract, a fresh
-// sandbox). The previous audit is preserved so /paper/:slug/audit
-// shows the original run followed by the replay (the ▶ replay started
-// row separates them).
+// TrueForge session (fresh sandbox). The previous audit is preserved
+// so /paper/:slug/audit shows the original run followed by the replay
+// (the ▶ replay started row separates them).
 //
 // Freshness proof (docs/plan/phase-5): the replay session's
 // sandbox.created sandboxId must differ from the original run's. The

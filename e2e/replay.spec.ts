@@ -20,7 +20,7 @@ test("replay creates a fresh session + sandbox and shows both runs in the audit"
   const cookies = await api.storageState();
   await context.addCookies(cookies.cookies);
 
-  // Start a first run; the fake streams to its paused terminal.
+  // Start a first run; the live harness streams to its paused terminal.
   await page.goto("/paper/new");
   await page.getByLabel(/Paper source URL or path/i).fill("https://arxiv.org/abs/1706.03762");
   await page.getByRole("button", { name: /Start/i }).click();

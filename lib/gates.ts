@@ -42,9 +42,8 @@ export type GateRow = {
   created_at: string;
 };
 
-// Phase 4.1: server-side TTL. The plan allows 5–30 min; we default to
-// 5 minutes in dev and 15 minutes in any environment that exposes
-// TRUEFORGE_MODE=live. TC-3 (the expiry E2E) overrides this via
+// Phase 4.1: server-side TTL (live-only, 15 minutes). Overridable via
+// APPROVAL_TTL_MS env. TC-3 (the expiry E2E) overrides via
 // __APPROVAL_TTL_MS_FOR_TESTS.
 export const APPROVAL_TTL_MS = (() => {
   const fromEnv = process.env.APPROVAL_TTL_MS;
@@ -52,7 +51,7 @@ export const APPROVAL_TTL_MS = (() => {
     const n = Number(fromEnv);
     if (Number.isFinite(n) && n > 0) return n;
   }
-  return process.env.TRUEFORGE_MODE === "live" ? 15 * 60_000 : 5 * 60_000;
+  return 15 * 60_000;
 })();
 
 export class ConflictError extends Error {

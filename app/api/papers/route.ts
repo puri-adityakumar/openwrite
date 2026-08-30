@@ -37,7 +37,12 @@ function err(status: number, message: string): NextResponse {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const user = await requireUser();
+  let user;
+  try {
+    user = await requireUser();
+  } catch {
+    return err(401, "authentication required");
+  }
   let body: CreateBody;
   try {
     body = (await req.json()) as CreateBody;
@@ -78,7 +83,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 }
 
 export async function GET(): Promise<NextResponse> {
-  const user = await requireUser();
+  let user;
+  try {
+    user = await requireUser();
+  } catch {
+    return err(401, "authentication required");
+  }
   const result = await query<{ id: string; slug: string; title: string | null; status: string; mode: string; halted: boolean; halt_reason: string | null; created_at: string }>(
     `SELECT id, slug, title, status, mode, halted, halt_reason, created_at
      FROM papers WHERE user_id = $1 ORDER BY created_at DESC`,

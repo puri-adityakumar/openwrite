@@ -4,7 +4,7 @@ import { test, expect, request } from "@playwright/test";
 //
 // These are the paste-ready test cases from docs/approval-gates.md,
 // adapted to the Phase 4 card surface (data-testids) and the Phase 2
-// live fake (paused terminal at the Verify gate).
+// live harness (paused terminal at the Verify gate).
 //
 // TC-1 (allow happy path): reach the Verify gate, type the owner,
 // press-and-hold Allow for 3s, assert the gate row becomes 'allowed'
@@ -20,9 +20,9 @@ import { test, expect, request } from "@playwright/test";
 // "approval expired — restart verification" and disables actions.
 //
 // We sign up a fresh user per test (so the demo@local rate limit
-// stays untouched) and use the live fake's paused terminal. The
+// stays untouched) and use The live harness's paused terminal. The
 // verify gate's expected owner is set by the gate panel; the
-// live fake doesn't pre-populate it, so TC-1 sets `expectedOwner`
+// live harness doesn't pre-populate it, so TC-1 sets `expectedOwner`
 // via the paper's first author (we type the slug or a static value).
 
 async function signUp(context: import("@playwright/test").BrowserContext) {
@@ -44,7 +44,7 @@ async function reachVerifyGate(page: import("@playwright/test").Page) {
   // /paper/new -> Review (default) -> Start. Then live cockpit streams
   // to a paused terminal and the Verify card appears.
   await page.goto("/paper/new");
-  await expect(page.getByRole("heading", { name: /New Paper/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Drop a paper/i })).toBeVisible();
   await page.getByLabel(/Paper source URL or path/i).fill("https://arxiv.org/abs/1706.03762");
   await page.getByRole("button", { name: /Start/i }).click();
   await page.waitForURL(/\/paper\//, { timeout: 15_000 });
@@ -63,7 +63,7 @@ test.describe("Phase 4 — approval gates (TC-1 / TC-2 / TC-3)", () => {
     await signUp(context);
     await reachVerifyGate(page);
 
-    // The live fake doesn't populate expectedOwner from the paper
+    // The live harness doesn't populate expectedOwner from the paper
     // row, so the card defaults to "tensorflow" (Phase 4.2 default).
     // The header shows "irreversible" and a countdown.
     const card = page.getByTestId("verify-card");
@@ -80,7 +80,7 @@ test.describe("Phase 4 — approval gates (TC-1 / TC-2 / TC-3)", () => {
       await expect(card.getByTestId(id)).toBeVisible();
     }
 
-    // The command is verbatim (the fake gate payload uses the
+    // The command is verbatim (the gate payload uses the
     // toolName as the command; for the bash gate it's "bash"). The
     // spec example is `python train.py --config configs/cifar.yaml`
     // — assert the section renders a non-empty <pre>.
@@ -240,7 +240,7 @@ test.describe("Phase 4 — approval gates (TC-1 / TC-2 / TC-3)", () => {
     await expect(page.getByTestId("verify-card")).toBeVisible({ timeout: 10_000 });
     const card2 = page.getByTestId("verify-card");
     await expect(card2.getByTestId("verify-expired")).toContainText(
-      /approval expired — restart verification/,
+      /approval expired — restart verification/i,
     );
     // Allow + Deny + Kill are all disabled on the expired card.
     await expect(card2.getByTestId("verify-allow")).toBeDisabled();

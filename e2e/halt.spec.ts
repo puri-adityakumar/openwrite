@@ -2,13 +2,13 @@ import { test, expect, request } from "@playwright/test";
 
 // Phase 5.1 — halt 2-state + cap E2E.
 //
-//   Halt cycle: the live fake pauses at the Verify gate; the button
+//   Halt cycle: The live harness pauses at the Verify gate; the button
 //   shows "⏹ Stop" (the Pause→Stop cycle's second state), clicking it
 //   stops and LOCKS the run: the button flips to the locked "⏹
 //   Stopped" label, the paused gate card does NOT resurrect, and the
 //   gate API refuses approvals (409).
 //
-//   Cap: a paper created with capTokens=1 hard-stops when the fake's
+//   Cap: a paper created with capTokens=1 hard-stops when the live harness's
 //   turn.done metrics (18,402 tokens) arrive — the chip turns red and
 //   the paper row lands halted with halt_reason 'cap'.
 
@@ -32,12 +32,12 @@ test.describe("Phase 5.1 — halt 2-state + cap", () => {
     await signUp(context);
 
     await page.goto("/paper/new");
-    await expect(page.getByRole("heading", { name: /New Paper/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Drop a paper/i })).toBeVisible();
     await page.getByLabel(/Paper source URL or path/i).fill("https://arxiv.org/abs/1706.03762");
     await page.getByRole("button", { name: /Start/i }).click();
     await page.waitForURL(/\/paper\//, { timeout: 15_000 });
 
-    // The fake streams to its paused terminal quickly; the halt button
+    // The live harness streams to its paused terminal quickly; the halt button
     // then offers the second state of the cycle: Stop.
     const halt = page.getByTestId("halt-btn");
     await expect(halt).toBeVisible({ timeout: 10_000 });
@@ -83,8 +83,8 @@ test.describe("Phase 5.1 — halt 2-state + cap", () => {
   test("cap exceed hard-stops the run and turns the chip red", async ({ page, context }) => {
     await signUp(context);
 
-    // Create the paper with a 1-token cap; the fake's turn reports
-    // 18,402 tokens, so the cap crosses the moment metrics arrive.
+    // Create the paper with a 1-token cap; the live turn's metrics
+    // exceed cap, so the cap crosses the moment metrics arrive.
     const api = await request.newContext({
       baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:13000",
       storageState: { cookies: await context.cookies(), origins: [] },
@@ -108,7 +108,7 @@ test.describe("Phase 5.1 — halt 2-state + cap", () => {
     await expect(chip).toBeVisible({ timeout: 10_000 });
     // The chip turns red (data-exceeded) when the usage lands.
     await expect(chip).toHaveAttribute("data-exceeded", "true", { timeout: 15_000 });
-    await expect(chip).toContainText("18,402");
+    await expect(chip).toContainText(/\d/);
 
     // The hard stop landed DB-side: halted, halt_reason 'cap'.
     const papersRes = await api.get("/api/papers");

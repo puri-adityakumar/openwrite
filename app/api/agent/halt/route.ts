@@ -75,7 +75,7 @@ export async function applyHalt(input: {
 
   // stop — cancel the upstream turn BEFORE locking (Qodo review round
   // 2): a failed cancellation must be retryable, so on failure we
-  // return 502 WITHOUT locking. The fake adapter no-ops here.
+  // return 502 WITHOUT locking.
   const reason = input.reason ?? "user";
   if (paper.session_id) {
     try {

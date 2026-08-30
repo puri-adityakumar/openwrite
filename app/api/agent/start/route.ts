@@ -28,7 +28,12 @@ function err(status: number, message: string): NextResponse {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const user = await requireUser();
+  let user;
+  try {
+    user = await requireUser();
+  } catch {
+    return err(401, "authentication required");
+  }
   let body: StartBody;
   try {
     body = (await req.json()) as StartBody;

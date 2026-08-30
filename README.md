@@ -58,16 +58,18 @@ the containers are up, open http://localhost:13000.
 ### Real TrueForge + GMI path (live LLM)
 
 For the demo and for the WeMakeDevs × TrueFoundry submission, Recap
-talks to a real TrueForge harness (not the in-process fake). The
+talks to a real TrueForge harness (live-only). The
 quickest path is `npx` standalone:
 
 ```bash
-# 1. start TrueForge (one command, no clone)
+# 1. start TrueForge (one command, no clone) — compose path is 18790,
+#    standalone npx defaults to 8790
 npx --yes @truefoundry/trueforge@latest &
-# wait for "Agent server listening on http://localhost:8790"
+# wait for "Agent server listening on http://localhost:8790" (standalone)
+# or http://localhost:18790 when using `docker compose up`
 
 # 2. register GMI as the Anthropic provider (custom base_url)
-curl -X POST http://localhost:8790/api/v1/settings/model-providers \
+curl -X POST ${TRUEFORGE_BASE_URL:-http://localhost:18790}/api/v1/settings/model-providers \
   -H "content-type: application/json" \
   -d '{"manifest":{
         "type":"anthropic",
@@ -76,9 +78,8 @@ curl -X POST http://localhost:8790/api/v1/settings/model-providers \
         "models":[{"model_id":"MiniMaxAI/MiniMax-M3","name":"gmi-minimax",
                    "properties":{"context_length":200000,"max_output_tokens":8192}}]}}'
 
-# 3. set TRUEFORGE_MODE=live in .env and restart the app
-echo "TRUEFORGE_MODE=live" >> .env
-echo "TF_BASE_URL=http://localhost:8790" >> .env
+# 3. set TRUEFORGE_BASE_URL in .env and restart the app
+echo "TRUEFORGE_BASE_URL=http://localhost:18790" >> .env  # standalone: 8790
 npm run build && npm run start
 ```
 

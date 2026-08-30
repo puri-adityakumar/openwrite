@@ -1,28 +1,17 @@
-// Phase 2.1 — TrueForge adapter boundary.
+// Phase 2.1 — TrueForge adapter (live-only).
 //
-// This is the ONLY file in the Openwrite app that talks to the TrueForge
-// server (the harness that runs in Docker at localhost:18790). The rest
-// of the app depends on the `TrueForgeClient` interface defined here.
+// This is the ONLY file that talks to the TrueForge server (the harness
+// that runs at TRUEFORGE_BASE_URL, default http://localhost:18790 for
+// `docker compose up`; standalone `npx` defaults to 8790). The rest
+// of the app depends on the `TrueForgeClient` interface defined here — no
+// in-process fake, no deterministic double.
 //
-// We support two modes:
-//   - "fake"   (default in dev/CI/tests): a deterministic in-process adapter
-//              that emits a fixed sequence of events. Day-one P7 constraint
-//              tests (sandbox.created probe, delta coalescing, paused
-//              terminal, role prefix) all run against this without needing
-//              a live TrueForge server.
-//   - "live"   (set TRUEFORGE_MODE=live and TRUEFORGE_BASE_URL=http://localhost:8790):
-//              talks HTTP directly to the TrueForge server (sessions +
-//              turns + resumable SSE). No SDK package required.
-//
-// Why a fake: the TrueForge source isn't checked into this repo. The
-// `docker-compose.trueforge.yml` bring-up requires a sibling `../trueforge`
-// checkout (per the architecture doc). The P7 binding constraints govern
-// how we stream events; the fake exercises them end-to-end today.
+// Previous fake adapter (TRUEFORGE_MODE=fake) removed: every session now
+// requires a real TrueForge server. Tests inject a double via
+// `__setTrueForgeClientForTest` instead of relying on a built-in Fake.
 
 import type { LiveEvent } from "./event-reducer";
 import { createParser, type EventSourceParser, type EventSourceMessage } from "eventsource-parser";
-
-export type TrueForgeMode = "fake" | "live";
 
 export type StartSessionInput = {
   paperId: string;
@@ -73,255 +62,27 @@ export interface TrueForgeClient {
   cancelSession(sessionId: string): Promise<void>;
 }
 
-function mode(): TrueForgeMode {
-  const m = (process.env.TRUEFORGE_MODE ?? "fake").toLowerCase();
-  return m === "live" ? "live" : "fake";
-}
-
 function baseUrl(): string {
-  return process.env.TRUEFORGE_BASE_URL ?? "http://localhost:18790";
-}
-
-// ----------------------------------------------------------------------------
-// Fake adapter — deterministic event sequence.
-// ----------------------------------------------------------------------------
-//
-// Sequence (review mode, paperId=fixture):
-//   1. turn.created
-//   2. sandbox.created
-//   3. model.message.delta x6 (reader, m1)
-//   4. tool.response (parse, page 1 density 0.6)
-//   5. tool.response (parse, page 2 density 0.8)
-//   6. thread.created (searcher subagent)
-//   7. tool.response (searcher, page 3 density 0.4)
-//   8. thread.done (searcher)
-//   9. tool.approval_required (verifier, bash)
-//  10. turn.done with requiredActions (paused)  OR  plain turn.done
-//
-// The fake's sequence number is monotonic. The reducer's seq guard
-// (which treats seq:0 as uncursorable) means tests that omit seq
-// still work; live tests that pass real seq get the dedupe behavior.
-
-// Event timestamps are relative to "now" so the audit page and Pulse
-// show the run's real wall clock (a fixed 2026 fixture date made the
-// audit Duration span from yesterday).
-function fakeEventsFor(
-  sessionId: string,
-  turnId: string,
-  uid: string,
-  paused: boolean,
-): LiveEvent[] {
-  const base = Date.now();
-  const at = (offsetMs: number) => new Date(base + offsetMs).toISOString();
-  let seq = 0;
-  const next = () => ++seq;
-  const ev = (e: Omit<LiveEvent, "seq">): LiveEvent => ({ ...e, seq: next() });
-  const events: LiveEvent[] = [
-    ev({
-      id: "e1", createdAt: at(0), type: "turn.created", payload: { sessionId, turnId },
-    }),
-    ev({
-      id: "e2", createdAt: at(1_000), type: "sandbox.created",
-      // Per-(session, turn) sandbox id: fresh per run (Daytona gives a
-      // fresh sandbox per session), stable across stream reloads of
-      // the SAME turn. `uid` derives from the unique session/turn ids.
-      payload: { sandboxId: `sbx_${uid}` },
-    }),
-    ev({
-      id: "e3a", createdAt: at(2_000), type: "model.message.delta",
-      payload: { messageId: "m1", threadId: "thr_root", delta: "The Transformer is " },
-    }),
-    ev({
-      id: "e3b", createdAt: at(2_100), type: "model.message.delta",
-      payload: { messageId: "m1", threadId: "thr_root", delta: "a new simple network " },
-    }),
-    ev({
-      id: "e3c", createdAt: at(2_200), type: "model.message.delta",
-      payload: { messageId: "m1", threadId: "thr_root", delta: "based on attention." },
-    }),
-    ev({
-      id: "e4", createdAt: at(3_000), type: "tool.response",
-      payload: { toolName: "parse_pdf", threadId: "thr_root", page: 1, density: 0.6 },
-    }),
-    ev({
-      id: "e5", createdAt: at(4_000), type: "tool.response",
-      payload: { toolName: "parse_pdf", threadId: "thr_root", page: 2, density: 0.8 },
-    }),
-    ev({
-      id: "e6", createdAt: at(5_000), type: "thread.created",
-      payload: { threadId: "thr_searcher", title: "claims-section" },
-    }),
-    ev({
-      id: "e7", createdAt: at(6_000), type: "tool.response",
-      payload: { toolName: "exa_search", threadId: "thr_searcher", page: 3, density: 0.4 },
-    }),
-    ev({
-      id: "e8", createdAt: at(7_000), type: "thread.done",
-      payload: { threadId: "thr_searcher" },
-    }),
-  ];
-  // The verifier thread/tool ids are ALSO per-(session, turn): a
-  // replayed paper gets a new session/turn, so the gates table's
-  // (thread_id, tool_call_id) unique key never swallows the new run's
-  // gate insert.
-  const verifierThreadId = `thr_verifier_${uid}`;
-  const verifierToolCallId = `tc_${uid}`;
-  if (paused) {
-    events.push(
-      ev({
-        id: "e9", createdAt: "2026-08-27T14:00:08.000Z", type: "tool.approval_required",
-        payload: {
-          threadId: verifierThreadId,
-          toolCallId: verifierToolCallId,
-          toolName: "bash",
-          // Qodo #10 — the upstream supplies the expected repo owner
-          // for the identity confirm. The fake sets it to "tensorflow"
-          // so the VerifyCard starts with Allow disabled (typed match
-          // required) and TC-1 can type it in.
-          repoOwner: "tensorflow",
-        },
-      }),
-      ev({
-        id: "e10", createdAt: at(9_000), type: "turn.done",
-        payload: {
-          state: "done",
-          requiredActions: [{ type: "tool.approval", toolCallId: verifierToolCallId }],
-          metrics: { totalTokens: 18402, totalCostInUsd: 0 },
-        },
-      }),
-    );
-  } else {
-    events.push(
-      ev({
-        id: "e9", createdAt: at(8_000), type: "turn.done",
-        payload: {
-          state: "done",
-          requiredActions: [],
-          metrics: { totalTokens: 18402, totalCostInUsd: 0 },
-        },
-      }),
-    );
-  }
-  return events;
-}
-
-// Qodo #5 — the post-resume event sequence. When the user Allows
-// the verify gate, the TrueForge turn is resumed and the agent
-// emits a small "continue" sequence (one model delta + a final
-// turn.done) so the cockpit has something to stream on reload.
-// For Deny, the agent emits a single "skipped" line + turn.done so
-// the cockpit leaves the paused state cleanly.
-function fakeResumeEventsFor(
-  sessionId: string,
-  decision: "allow" | "deny",
-  threadId: string,
-  toolCallId: string,
-): LiveEvent[] {
-  const turnId = `turn_resume_${Math.random().toString(36).slice(2, 8)}`;
-  let seq = 0;
-  const next = () => ++seq;
-  const ev = (e: Omit<LiveEvent, "seq">): LiveEvent => ({ ...e, seq: next() });
-  if (decision === "allow") {
-    return [
-      ev({
-        id: "r1", createdAt: new Date().toISOString(), type: "turn.created",
-        payload: { sessionId, turnId },
-      }),
-      ev({
-        id: "r2", createdAt: new Date().toISOString(), type: "model.message.delta",
-        payload: { messageId: "m2", threadId, delta: "Resumed after approval. Running tool…\n" },
-      }),
-      ev({
-        id: "r3", createdAt: new Date().toISOString(), type: "turn.done",
-        payload: { state: "done", requiredActions: [], metrics: { totalTokens: 19000, totalCostInUsd: 0 } },
-      }),
-    ];
-  }
-  // Deny / Expire — agent acknowledges the denial and closes the turn.
-  return [
-    ev({
-      id: "r1", createdAt: new Date().toISOString(), type: "turn.created",
-      payload: { sessionId, turnId },
-    }),
-    ev({
-      id: "r2", createdAt: new Date().toISOString(), type: "model.message.delta",
-      payload: { messageId: "m2", threadId, delta: `User ${decision} on tool call ${toolCallId}; continuing without running.\n` },
-    }),
-    ev({
-      id: "r3", createdAt: new Date().toISOString(), type: "turn.done",
-      payload: { state: "done", requiredActions: [], metrics: { totalTokens: 18500, totalCostInUsd: 0 } },
-    }),
-  ];
-}
-
-// Qodo #5 — the fake remembers the resume decision per (sessionId,
-// toolCallId) so the next createTurnStream call for the resumed
-// turnId emits the post-resume sequence (Qodo #5 — without this the
-// fake loops back to the same paused sequence).
-const resumeMemory: Map<string, { decision: "allow" | "deny"; events: LiveEvent[]; turnId: string }> = new Map();
-
-// Exported so tests can construct + inject a fake instance via
-// __setTrueForgeClientForTest, keeping them independent of TRUEFORGE_MODE.
-export class FakeTrueForgeClient implements TrueForgeClient {
-  async startSession(input: StartSessionInput): Promise<StartSessionResult> {
-    // The session id is unique per start (a random suffix): a replayed
-    // paper gets a NEW session, which the per-(session, turn) uid in
-    // createTurnStream turns into a fresh sandbox + fresh verifier ids.
-    const sessionId = `sess_${input.paperId.slice(0, 8)}_${Math.random().toString(36).slice(2, 6)}`;
-    const turnId = `turn_${Math.random().toString(36).slice(2, 8)}`;
-    return { sessionId, turnId };
-  }
-  async createTurnStream(sessionId: string, turnId: string): Promise<TurnStream> {
-    // If we have a resume stored for THIS turnId, emit the post-resume
-    // sequence (Qodo #5). Otherwise emit the default paused sequence.
-    const key = `${sessionId}:${turnId}`;
-    const resume = resumeMemory.get(key);
-    // Per-(session, turn) uid: STABLE across reloads of the same turn
-    // (the cockpit re-opens the stream and must see the same sandbox /
-    // verifier ids), UNIQUE across sessions and turns (a replay gets a
-    // fresh sandbox and a fresh gate identity).
-    const uid = `${sessionId.slice(-6)}_${turnId.slice(-6)}`;
-    const events = resume
-      ? resume.events
-      : fakeEventsFor(sessionId, turnId, uid, true);
-    let cancelled = false;
-    const iterator: AsyncIterableIterator<LiveEvent> = {
-      next: async () => {
-        if (cancelled) return { value: undefined, done: true };
-        const v = events.shift();
-        if (!v) return { value: undefined, done: true };
-        return { value: v, done: false };
-      },
-      return: async () => ({ value: undefined, done: true }),
-      throw: async (e) => { throw e; },
-      [Symbol.asyncIterator]: () => iterator,
-    };
-    return { iterator, cancel: () => { cancelled = true; } };
-  }
-  async cancelSession(_sessionId: string): Promise<void> {
-    // no-op
-  }
-  async resumeTurnWithApproval(input: ResumeTurnInput): Promise<ResumeTurnResult> {
-    const turnId = `turn_resume_${Math.random().toString(36).slice(2, 8)}`;
-    const events = fakeResumeEventsFor(input.sessionId, input.decision, input.threadId, input.toolCallId);
-    resumeMemory.set(`${input.sessionId}:${turnId}`, { decision: input.decision, events, turnId });
-    return { turnId };
-  }
+  // Canonical host port for `docker compose up` is 18790 (see
+  // docker-compose.override.yml + docs/architecture.md). Standalone
+  // `npx @truefoundry/trueforge` defaults to 8790 — set
+  // TRUEFORGE_BASE_URL=http://localhost:8790 when using that path.
+  // TF_BASE_URL is a legacy alias kept for backwards compat.
+  return (
+    process.env.TRUEFORGE_BASE_URL ??
+    process.env.TF_BASE_URL ??
+    "http://localhost:18790"
+  );
 }
 
 // ----------------------------------------------------------------------------
 // Live adapter — direct HTTP/SSE against the TrueForge server.
 //
-// Replaces the previous lazy-SDK stub (`LiveTrueForgeClient`, which
-// required `@truefoundry/trueforge-sdk` — not installed in this dev env).
-// The HTTP layer matches the TrueForge OpenAPI spec at /api/v1:
+// Matches the TrueForge OpenAPI spec at /api/v1:
 //   POST /api/v1/sessions
 //   POST /api/v1/sessions/{id}/turns   (stream=false to kick off a run)
 //   GET  /api/v1/sessions/{id}/turns/{tid}/subscribe   (resumable SSE)
 //   POST /api/v1/sessions/{id}/cancel
-//
-// Default base URL is `http://localhost:8790` (the npx standalone
-// harness); override with `TRUEFORGE_BASE_URL`.
 // ----------------------------------------------------------------------------
 
 // Wire-level shapes — kept loose because the upstream OpenAPI tags every
@@ -546,7 +307,7 @@ class HttpTrueForgeClient implements TrueForgeClient {
   async cancelSession(sessionId: string): Promise<void> {
     const res = await fetch(
       `${baseUrl()}/api/v1/sessions/${encodeURIComponent(sessionId)}/cancel`,
-      { method: "POST", headers: jsonHeaders() },
+      { method: "POST", headers: jsonHeaders(), body: JSON.stringify({}) },
     );
     // 200 means the cancel was accepted; 404 means nothing was running.
     if (!res.ok && res.status !== 404) {
@@ -558,14 +319,15 @@ class HttpTrueForgeClient implements TrueForgeClient {
   }
 
   async resumeTurnWithApproval(input: ResumeTurnInput): Promise<ResumeTurnResult> {
-    const item: ResumeInputItem = {
-      type: "user.tool_approval",
-      threadId: input.threadId,
-      toolCallId: input.toolCallId,
+    // Wire shape per OpenAPI UserToolApprovalEvent: snake_case thread_id / tool_call_id
+    const item = {
+      type: "user.tool_approval" as const,
+      thread_id: input.threadId,
+      tool_call_id: input.toolCallId,
       approval:
         input.decision === "allow"
-          ? { status: "allow" }
-          : { status: "deny", reason: input.reason ?? "" },
+          ? { status: "allow" as const }
+          : { status: "deny" as const, reason: input.reason ?? "" },
     };
     const res = await fetch(
       `${baseUrl()}/api/v1/sessions/${encodeURIComponent(input.sessionId)}/turns`,
@@ -615,12 +377,34 @@ function translateWireEvent(
     }
     case "turn.done": {
       const state = ev.state ?? { status: "done" };
+      // Normalize nested required_actions: accept snake_case/camelCase for
+      // threadId and toolCalls[*].id so downstream (stream route + reducer)
+      // sees a consistent shape regardless of wire casing.
+      const rawActions = (state.required_actions as unknown[] | undefined) ?? [];
+      const requiredActions = rawActions.map((a) => {
+        if (!a || typeof a !== "object") return a;
+        const act = a as Record<string, unknown>;
+        const tcsRaw = Array.isArray(act.toolCalls)
+          ? act.toolCalls
+          : Array.isArray(act.tool_calls)
+            ? act.tool_calls
+            : null;
+        if (tcsRaw === null) return act;
+        const tcs = (tcsRaw as Array<Record<string, unknown>>).map((tc) => {
+          if (!tc || typeof tc !== "object") return tc;
+          const id = (tc.id ?? tc.toolCallId ?? (tc as Record<string, unknown>).tool_call_id ?? "") as string;
+          const name = (tc.name ?? tc.toolName ?? (tc as Record<string, unknown>).tool_name ?? "tool") as string;
+          return { ...tc, id, toolCallId: id, tool_call_id: id, name, toolName: name, tool_name: name };
+        });
+        const threadId = (act.threadId ?? act.thread_id ?? "") as string;
+        return { ...act, threadId, thread_id: threadId, toolCalls: tcs, tool_calls: tcs };
+      });
       return {
         ...base,
         type: "turn.done",
         payload: {
           state: state.status,
-          requiredActions: state.required_actions ?? [],
+          requiredActions,
           metrics: state.metrics ?? { totalTokens: 0, totalCostInUsd: 0 },
         },
       };
@@ -708,7 +492,7 @@ function translateWireEvent(
 let _client: TrueForgeClient | null = null;
 export function getTrueForgeClient(): TrueForgeClient {
   if (_client) return _client;
-  _client = mode() === "live" ? new HttpTrueForgeClient() : new FakeTrueForgeClient();
+  _client = new HttpTrueForgeClient();
   return _client;
 }
 

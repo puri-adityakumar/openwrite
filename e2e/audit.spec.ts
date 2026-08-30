@@ -16,7 +16,9 @@ test.describe("Phase 5.2 — audit page: seeded paper", () => {
     await page.goto("/paper/attention-is-all-you-need/audit");
     const timeline = page.getByTestId("audit-timeline");
     await expect(timeline).toBeVisible();
-    await expect(page.getByRole("heading", { name: /Audit — Attention Is All You Need/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Attention Is All You Need/i })).toBeVisible();
+    // Audit eyebrow is separate span (exact match avoids replay button)
+    await expect(page.getByText("Audit", { exact: true }).first()).toBeVisible();
     // Seed rows: the trail pills as ▶ rows, pulse lines as ✓ rows.
     await expect(timeline.getByTestId("audit-row")).toHaveCount(10); // 6 pills + 4 pulse lines
     await expect(timeline.getByTestId("audit-row").first()).toContainText("Source");
@@ -75,9 +77,8 @@ test.describe("Phase 5.2 — audit page: live run", () => {
     await expect(rows.filter({ hasText: "audit e2e deny" })).toHaveCount(1);
     // Footer shape: tokens from the last metrics turn, the Cost "—"
     // rule, a duration. (Exact values are unit-pinned in
-    // tests/audit-page.test.tsx; the fake's fixed fixture dates make
-    // the live numbers vary.)
-    await expect(page.getByTestId("audit-footer")).toContainText(/Total tokens 18,[\d,]+/);
+    // tests/audit-page.test.tsx; live numbers vary.)
+    await expect(page.getByTestId("audit-footer")).toContainText(/Total tokens [\d,]+/);
     await expect(page.getByTestId("audit-footer")).toContainText("Cost —");
     await expect(page.getByTestId("audit-footer")).toContainText(/Duration \d+/);
 

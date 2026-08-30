@@ -42,8 +42,27 @@ describe("P7#2 — no await between enqueues (binding)", () => {
     // We drive the pure buildStream() function (separated from the auth
     // wrapper) so the P7#2 SSE pipeline can be exercised in unit tests
     // without a session cookie.
-    const { __setTrueForgeClientForTest, FakeTrueForgeClient } = await import("../lib/trueforge");
-    __setTrueForgeClientForTest(new FakeTrueForgeClient());
+    const { __setTrueForgeClientForTest } = await import("../lib/trueforge");
+    const mockEvents = [
+      { id: "m1", createdAt: new Date().toISOString(), type: "turn.created", payload: {}, seq: 1 },
+      { id: "m2", createdAt: new Date().toISOString(), type: "turn.done", payload: { state: "done", requiredActions: [], metrics: {} }, seq: 2 },
+    ];
+    let idx = 0;
+    const it = {
+      next: async () => {
+        const v = mockEvents[idx++];
+        return v ? { value: v, done: false } : { value: undefined, done: true };
+      },
+      return: async () => ({ value: undefined, done: true }),
+      throw: async (e: unknown) => { throw e; },
+      [Symbol.asyncIterator]: () => it,
+    };
+    __setTrueForgeClientForTest({
+      async startSession() { return { sessionId: "sess_mock", turnId: "turn_mock" }; },
+      async createTurnStream() { return { iterator: it as unknown as AsyncIterableIterator<never>, cancel: () => {} }; },
+      async cancelSession() {},
+      async resumeTurnWithApproval() { return { turnId: "turn_resume_mock" }; },
+    });
     const { buildStream } = await import("../app/api/agent/stream/route");
     const resp = await buildStream({
       sessionId: "sess_fake",

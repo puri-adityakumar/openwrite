@@ -2,13 +2,9 @@ import { test, expect, request } from "@playwright/test";
 
 // Phase 2.3 — cockpit-live E2E.
 //
-// Captures a mid-run screenshot of the live cockpit. The fake adapter
-// is deterministic and finishes in <1s, so the "mid-run" frame is taken
-// just after the turn.created event and before the turn.paused terminal.
-//
-// Plan verification: "Screenshot evidence: mid-run cockpit with ◉ on
-// Verify and partial Coverage" — the fake delivers exactly this state
-// for a fraction of a second, so the screenshot is timed to land there.
+// Captures a mid-run screenshot of the live cockpit. The live harness
+// streams events; the "mid-run" frame is taken just after the
+// turn.created event and before the terminal.
 
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
@@ -40,7 +36,7 @@ test("cockpit-live: mid-run screenshot shows live Trail + Coverage", async ({ pa
   // snapshot as fast as possible so we land in the mid-run window.
   await expect(page.getByTestId("sandbox-id")).toContainText(/sbx_/, { timeout: 10_000 });
 
-  // The fake adapter is fast, so the "mid-run" frame is only there for a
+  // The live harness streams, so the "mid-run" frame is only there for a
   // few ms between the gate (Verify pill running) and the terminal
   // turn.paused. We catch it by waiting for the gate pulse line, which
   // appears just before the terminal frame.

@@ -27,14 +27,13 @@ test("stranger: landing -> login -> dashboard -> cockpit first paint", async ({ 
   // t = 50s — LANDING -------------------------------------------------
   await page.goto("/");
   await expect(page).toHaveTitle(/Openwrite/i);
-  await expect(page.getByRole("heading", { name: /Openwrite/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Drop a paper/i })).toBeVisible();
   // Decision D2: demo creds visible under the sign-in card.
   await expect(page.getByText("demo@local")).toBeVisible();
   await expect(page.getByText("demo1234")).toBeVisible();
-  // Dr. K anchor copy from the mockup.
-  await expect(page.getByText(/preprints/i)).toBeVisible();
-  // "Powered by" line per the mockup.
-  await expect(page.getByText(/TrueForge/i)).toBeVisible();
+  // Landing copy per current mockup (Drop a paper hero)
+  await expect(page.getByText(/Drop a paper/i)).toBeVisible();
+  await expect(page.getByText(/Now in private alpha/i)).toBeVisible();
 
   // t = 53s — LOGIN ----------------------------------------------------
   // Verify the sign-in form is actually wired (positive UX check), then
@@ -71,7 +70,7 @@ test("stranger: landing -> login -> dashboard -> cockpit first paint", async ({ 
   await expect(page.getByTestId("coverage-grid")).toBeVisible();
 
   // Summary tab default — title + TL;DR + abstract snippet.
-  await expect(page.getByRole("heading", { name: /Attention Is All You Need/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Attention Is All You Need/i }).first()).toBeVisible();
   await expect(page.getByText(/Transformer/i).first()).toBeVisible();
 
   // Pulse: 5 lines, the first matches the seed.
@@ -86,7 +85,7 @@ test("stranger: /paper/new shows the 3-mode dial with Review selectable", async 
   await page.goto("/dashboard");
 
   await page.goto("/paper/new");
-  await expect(page.getByRole("heading", { name: /New Paper/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Drop a paper/i })).toBeVisible();
   // All three mode verbs must be visible (each is a radio button).
   await expect(page.getByRole("radio", { name: /Learn/ })).toBeVisible();
   await expect(page.getByRole("radio", { name: /Deep-read/ })).toBeVisible();
