@@ -67,7 +67,7 @@ export function SignupForm() {
           required
           aria-label="Email"
           aria-invalid={emailBlurred && emailInvalid}
-          className="input mt-1.5"
+          className="input signup-card-input mt-1.5"
           value={email}
           onChange={onEmailChange}
           onBlur={onEmailBlur}
@@ -84,7 +84,7 @@ export function SignupForm() {
           aria-label="Password"
           aria-describedby="pw-hint"
           aria-invalid={password.length > 0 && !passwordOk}
-          className="input mt-1.5"
+          className="input signup-card-input mt-1.5"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
@@ -93,6 +93,30 @@ export function SignupForm() {
             ? "Strong enough."
             : "8 or more characters."}
         </p>
+        <div className="mt-2 flex items-center gap-3" aria-hidden="true">
+          <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: 'var(--color-border)' }}>
+            <div
+              className="h-full transition-all duration-200"
+              style={{
+                width: password.length === 0 ? '0%'
+                  : password.length < 4 ? '25%'
+                  : password.length < 8 ? '50%'
+                  : password.length < 12 ? '75%'
+                  : '100%',
+                background:
+                  password.length < 4 ? 'var(--color-destructive)' :
+                  password.length < 8 ? 'var(--warn)' :
+                  'var(--accent-indigo)',
+              }}
+            />
+          </div>
+          <span
+            className="text-[0.6875rem] tabular-nums"
+            style={{ fontFamily: 'var(--font-num)', color: 'var(--color-muted-foreground)' }}
+          >
+            {password.length} / 12
+          </span>
+        </div>
       </label>
       {error && (
         <p className="text-sm text-[var(--color-destructive)]" role="alert">{error}</p>
@@ -101,7 +125,7 @@ export function SignupForm() {
         type="submit"
         disabled={pending}
         aria-busy={pending}
-        className="btn btn-primary w-full justify-center"
+        className="btn btn-indigo w-full justify-center"
       >
         {pending && <span className="btn-spinner" aria-hidden="true" />}
         <span>{pending ? "Creating account" : "Create account"}</span>

@@ -5,8 +5,8 @@
 
 @import "tailwindcss";
 
-/* Fonts — Raleway for labels/display, Merriweather for prose.
-   Inter is reserved for chrome (buttons, pills, inputs). */
+/* Fonts — Raleway for display/headings, Montserrat for body/prose,
+   JetBrains Mono for numbers and code. No third voice on UI chrome. */
 @font-face { font-family: "system-fallback"; src: local("system-ui"); }
 
 /* Light tokens (default). */
@@ -43,10 +43,13 @@
   --bad:       var(--color-destructive);
 
   /* Type families */
-  --font-heading: 'Raleway', system-ui, sans-serif;
-  --font-body:    'Merriweather', Georgia, serif;
+  --font-display: 'Raleway', system-ui, sans-serif;
+  --font-heading: var(--font-display); /* backward-compat alias for landing components */
+  --font-body:    'Montserrat', system-ui, sans-serif;
+  --font-num:     'JetBrains Mono', ui-monospace, monospace;
   --font-sans:    system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono:    ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --font-serif:   'Fraunces', Georgia, 'Times New Roman', serif;
 
   /* Spacing rhythm */
   --section-y:  clamp(6rem, 8vw, 8rem);
@@ -60,6 +63,41 @@
 
   /* Motion (globals.css lines 156-186) */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out:     cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring:     cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-snap:       cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-settle:     cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-quint-out:  cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-marquee:    linear;
+
+  --dur-fast:      200ms;
+  --dur-base:      400ms;
+  --dur-reveal:    600ms;
+  --dur-signature: 1600ms;
+  --dur-countup:   1100ms;
+  --dur-hold:      3000ms;
+
+  /* Brand accent — the receipt color. Used for hero mark, CTA,
+     "REVERSIBLE" badge, surface icon hover. Reserved, never painted
+     on body text under 18px. */
+  --accent-indigo:        hsl(243 75% 58%);
+  --accent-indigo-hover:  hsl(243 75% 50%);
+  --accent-indigo-soft:   hsl(243 75% 58% / 0.10);
+
+  /* Receipt gradient — hero backdrop + sign-in card edge only. */
+  --receipt-grad: linear-gradient(
+    135deg,
+    hsl(243 75% 58% / 0.06) 0%,
+    transparent 50%,
+    hsl(150 70% 45% / 0.04) 100%
+  );
+
+  /* CTA panel gradient — full bleed for section V. */
+  --cta-grad: linear-gradient(
+    180deg,
+    hsl(243 30% 12%) 0%,
+    hsl(220 9% 9%) 100%
+  );
 }
 
 /* Dark tokens — opt-in via <html data-theme="dark"> OR prefers-color-scheme. */
@@ -85,6 +123,20 @@
   --color-popover:              hsl(220 9% 9%);
   --color-popover-foreground:   hsl(220 9% 98%);
   --accent-blue: hsl(220 80% 65%);
+  --accent-indigo:        hsl(243 90% 70%);
+  --accent-indigo-hover:  hsl(243 90% 78%);
+  --accent-indigo-soft:   hsl(243 90% 70% / 0.18);
+  --receipt-grad: linear-gradient(
+    135deg,
+    hsl(243 90% 70% / 0.10) 0%,
+    transparent 50%,
+    hsl(150 70% 50% / 0.08) 100%
+  );
+  --cta-grad: linear-gradient(
+    180deg,
+    hsl(220 9% 6%) 0%,
+    hsl(243 35% 12%) 100%
+  );
   --good:      hsl(150 70% 50%);
   --warn:      hsl(38 92% 60%);
   --bad:       var(--color-destructive);
@@ -113,6 +165,20 @@
     --color-popover:              hsl(220 9% 9%);
     --color-popover-foreground:   hsl(220 9% 98%);
     --accent-blue: hsl(220 80% 65%);
+    --accent-indigo:        hsl(243 90% 70%);
+    --accent-indigo-hover:  hsl(243 90% 78%);
+    --accent-indigo-soft:   hsl(243 90% 70% / 0.18);
+    --receipt-grad: linear-gradient(
+      135deg,
+      hsl(243 90% 70% / 0.10) 0%,
+      transparent 50%,
+      hsl(150 70% 50% / 0.08) 100%
+    );
+    --cta-grad: linear-gradient(
+      180deg,
+      hsl(220 9% 6%) 0%,
+      hsl(243 35% 12%) 100%
+    );
     --good:      hsl(150 70% 50%);
     --warn:      hsl(38 92% 60%);
     --bad:       var(--color-destructive);
@@ -124,7 +190,7 @@ html, body {
   color: var(--color-foreground);
   font-family: var(--font-body);
   font-weight: 400;
-  line-height: 1.7;
+  line-height: 1.65; /* Montserrat sets tighter than Merriweather; 1.7 reads too loose */
   letter-spacing: -0.005em;
   margin: 0;
   min-height: 100vh;
@@ -142,15 +208,25 @@ h1, h2, h3, h4, h5, h6 {
 }
 h1 { font-size: 2.5rem;  font-weight: 300; letter-spacing: -0.04em; }
 h2 { font-size: 2rem;    font-weight: 400; letter-spacing: -0.03em; }
-h3 { font-size: 1.5rem;  font-weight: 700; letter-spacing: -0.02em; }
-h4 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.015em; }
+h3 { font-size: 1.5rem;  font-weight: 600; letter-spacing: -0.02em; } /* Montserrat 600 ≈ Raleway 700 */
+h4 { font-size: 1.25rem; font-weight: 500; letter-spacing: -0.015em; } /* Montserrat 500 ≈ Raleway 600 */
 
 p { color: var(--color-muted-foreground); margin: 0; }
 
 a { color: var(--accent-blue); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-button { font-family: var(--font-sans); }
+button { font-family: var(--font-body); } /* design-audit: no third typeface — buttons must read as body voice */
+
+code, pre, kbd, samp { font-family: var(--font-num); }
+
+/* Navbar link — color is set inline; hover promotes to indigo.
+   Tailwind v4 doesn't compile arbitrary-value hover variants with
+   CSS variables reliably, so this lives in plain CSS. */
+.navbar-link:hover {
+  color: var(--accent-indigo);
+  text-decoration: none;
+}
 
 /* Focus ring — visible, 2px, ink color, 2px offset. The single source
    of truth for focus styling across the whole surface. No element
@@ -268,7 +344,7 @@ main { animation: rcp-fade-in 0.3s var(--ease-out) both; }
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
   padding: 0.625rem 1rem;
-  font-family: var(--font-sans);
+  font-family: var(--font-display);
   font-size: 0.875rem;
   font-weight: 500;
   border-radius: var(--radius-md);
@@ -367,7 +443,7 @@ main { animation: rcp-fade-in 0.3s var(--ease-out) both; }
 .input {
   width: 100%;
   padding: 0.625rem 0.75rem;
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   font-size: 1rem;
   color: var(--color-foreground);
   background: var(--color-background);
@@ -571,4 +647,237 @@ main { animation: rcp-fade-in 0.3s var(--ease-out) both; }
   font-size: 0.8125rem;
   color: var(--color-muted-foreground);
   line-height: 1.5;
+}
+
+/* ============================================================
+   10x Bolder Pass — display serif, accent indigo, motion vocabulary
+   Adds (never overrides) the system above. Existing tokens stay
+   authoritative; this block adds Fraunces, the indigo accent,
+   and the 5 signature motion primitives.
+   ============================================================ */
+
+/* Receipt display serif — Fraunces with optical sizing axis.
+   `display` mode sets opsz to 144 (large display); `body` mode
+   sets it to 14 so the same family reads correctly at body size.
+   The !important on font-family beats the global h2 selector in
+   globals.css which forces var(--font-heading). */
+.rcp-display {
+  font-family: var(--font-serif) !important;
+  font-variation-settings: "opsz" 144, "SOFT" 30;
+  letter-spacing: -0.04em;
+  font-weight: 500;
+  line-height: 1.05;
+}
+.rcp-display-body {
+  font-family: var(--font-serif) !important;
+  font-variation-settings: "opsz" 14, "SOFT" 30;
+  font-weight: 400;
+  font-style: italic;
+  line-height: 1.25;
+}
+[data-theme="dark"] .rcp-display {
+  font-weight: 600;
+  letter-spacing: -0.045em;
+}
+
+/* Accent indigo — paint only on >= 18px text, borders, or marks. */
+.rcp-accent-text { color: var(--accent-indigo); }
+.rcp-accent-mark { color: var(--accent-indigo); fill: var(--accent-indigo); }
+
+/* Indigo button — the ONE solid-fill CTA. No gradient, no glass.
+   Sits on the inverted CTA panel and on the hero sign-in card. */
+.btn-indigo {
+  background: var(--accent-indigo);
+  color: hsl(0 0% 100%);
+  border: 1px solid var(--accent-indigo);
+}
+.btn-indigo:hover {
+  background: var(--accent-indigo-hover);
+  border-color: var(--accent-indigo-hover);
+}
+:root:not([data-theme="dark"]) .btn-indigo {
+  box-shadow:
+    0 1px 0 hsl(243 75% 30% / 0.25),
+    0 8px 24px -8px hsl(243 75% 58% / 0.45);
+}
+.btn-indigo:hover {
+  box-shadow:
+    0 1px 0 hsl(243 75% 30% / 0.25),
+    0 12px 32px -8px hsl(243 75% 58% / 0.6);
+}
+
+/* Card hover — no shadow swap. Top accent border + 2px lift instead. */
+.card-hoverable {
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+  border-top-color: var(--color-border);
+}
+.card-hoverable:hover {
+  border-top-color: var(--accent-indigo);
+  transform: translateY(-2px);
+}
+.card-hoverable:focus-visible {
+  border-top-color: var(--accent-indigo);
+  transform: translateY(-2px);
+  outline: 2px solid var(--color-foreground);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-hoverable,
+  .card-hoverable:hover,
+  .card-hoverable:focus-visible { transform: none; transition: none; }
+}
+
+/* Glow budget — exactly TWO glows allowed on the page: hero cockpit
+   frame + CTA button. Anything else that wants a glow loses to this
+   budget. Keep it tight, the indigo is the brand, not a decoration. */
+.rcp-cockpit-glow {
+  box-shadow:
+    0 0 0 1px var(--accent-indigo-soft),
+    0 30px 60px -20px var(--accent-indigo-soft);
+  transition: box-shadow var(--dur-base) var(--ease-out);
+}
+.rcp-cockpit-glow:hover {
+  box-shadow:
+    0 0 0 1px var(--accent-indigo),
+    0 30px 60px -16px hsl(243 75% 58% / 0.35);
+}
+:root[data-theme="dark"] .rcp-cockpit-glow {
+  box-shadow:
+    0 0 0 1px var(--accent-indigo-soft),
+    0 30px 60px -20px hsl(243 90% 70% / 0.18);
+}
+
+/* ============================================================
+   Motion primitives — 5 signature animations.
+   Every rule ships with a matching prefers-reduced-motion block.
+   ============================================================ */
+
+/* 1) Hero signature wipe — clip-path mask wipe left → right. */
+@keyframes rcp-signature-wipe {
+  from { clip-path: inset(0 100% 0 0); }
+  to   { clip-path: inset(0 0 0 0); }
+}
+.rcp-signature-wipe {
+  animation: rcp-signature-wipe var(--dur-signature) var(--ease-quint-out) both;
+}
+
+/* 2) Hero accent underline draw — paired with the wipe. */
+@keyframes rcp-underline-draw {
+  from { stroke-dashoffset: 100; }
+  to   { stroke-dashoffset: 0; }
+}
+.rcp-underline-draw {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: rcp-underline-draw var(--dur-signature) var(--ease-quint-out) 200ms both;
+}
+
+/* 3) Section rule dash fill — right-side accent rule. */
+@keyframes rcp-rule-fill {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+.rcp-rule-fill {
+  transform-origin: left center;
+  animation: rcp-rule-fill var(--dur-reveal) var(--ease-out) both;
+}
+
+/* 4) Receipt left rule height track — top → bottom. */
+@keyframes rcp-rule-rise {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+.rcp-rule-rise {
+  transform-origin: top center;
+  animation: rcp-rule-rise 1200ms var(--ease-out) both;
+}
+
+/* 5) Trail flow — connected dot on the hero pill row. */
+@keyframes rcp-trail-flow {
+  from { transform: translateX(-50%); }
+  to   { transform: translateX(50%); }
+}
+.rcp-trail-flow {
+  animation: rcp-trail-flow 8s var(--ease-marquee) infinite;
+}
+
+/* 6) Caret blink — terminal snippet caret. */
+@keyframes rcp-caret-blink {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.rcp-caret-blink {
+  animation: rcp-caret-blink 1.1s var(--ease-in-out) infinite;
+}
+
+/* 7) Paper-title marquee — single line, doubled track. */
+@keyframes rcp-marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.rcp-marquee-track {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: rcp-marquee 48s linear infinite;
+}
+.rcp-marquee-host:hover .rcp-marquee-track { animation-play-state: paused; }
+
+/* 8) Surface mark indigo shift on card hover. */
+.rcp-surface-mark {
+  color: var(--color-muted-foreground);
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.rcp-surface-card:hover .rcp-surface-mark,
+.rcp-surface-card:focus-visible .rcp-surface-mark {
+  color: var(--accent-indigo);
+}
+
+/* 9) Gate severity left accent — 3px solid. */
+.rcp-gate-card {
+  border-left: 3px solid var(--color-border);
+}
+.rcp-gate-card[data-severity="irreversible"] { border-left-color: var(--color-destructive); }
+.rcp-gate-card[data-severity="reversible"]   { border-left-color: var(--accent-indigo); }
+
+/* Reduced-motion: collapse every signature animation. */
+@media (prefers-reduced-motion: reduce) {
+  .rcp-signature-wipe,
+  .rcp-underline-draw,
+  .rcp-rule-fill,
+  .rcp-rule-rise,
+  .rcp-trail-flow,
+  .rcp-caret-blink,
+  .rcp-marquee-track,
+  .rcp-hero-word {
+    animation: none !important;
+    transform: none !important;
+    clip-path: none !important;
+    stroke-dashoffset: 0 !important;
+    opacity: 1 !important;
+  }
+}
+
+/* CTA panel — inverted full-bleed gradient, Fraunces display title. */
+.rcp-cta-panel {
+  background: var(--cta-grad);
+  color: hsl(0 0% 100%);
+}
+.rcp-cta-panel h2 {
+  color: hsl(0 0% 100%);
+  font-family: var(--font-serif);
+  font-variation-settings: "opsz" 144, "SOFT" 30;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  font-size: clamp(2.25rem, 5vw, 4rem);
+  line-height: 1.05;
+}
+.rcp-cta-panel p { color: hsl(0 0% 100% / 0.78); }
+
+/* Forced colors — keep the system ring, don't freeze the indigo. */
+@media (forced-colors: active) {
+  .rcp-accent-text,
+  .rcp-accent-mark { color: LinkText; }
+  .btn-indigo { background: ButtonFace; color: ButtonText; border-color: ButtonText; }
 }

@@ -1,8 +1,23 @@
+// Global navbar — sticky, frosted glass over the page, Logo on the
+// left, four nav links centered, GitHub + theme toggle on the right.
+// Pairs with the landing 10x pass (docs/landing-10x-handover.md):
+// muted-foreground rest, indigo hover, Montserrat 14px medium.
+// Color and font tokens are read from app/globals.css; no hardcoded
+// values here.
+
 "use client";
 
 import { useEffect, useLayoutEffect, useState } from "react";
+import { Logo } from "./landing/Logo";
 
 const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
+const NAV_LINKS = [
+  { label: "Recap",    href: "/#surfaces" },
+  { label: "Features", href: "/#surfaces" },
+  { label: "Pricing",  href: "/#open-cockpit" },
+  { label: "Docs",     href: "https://github.com/OnSyncLabs/Openwrite" },
+];
 
 export function BrandHeader() {
   const [theme, setTheme] = useState<"light" | "dark">(() => {
@@ -26,25 +41,35 @@ export function BrandHeader() {
   }
 
   return (
-    <header className="border-b border-[var(--color-border)] backdrop-blur-sm bg-[var(--color-background)]/95"
-      style={{ paddingInlineStart: "max(1.5rem, env(safe-area-inset-left))", paddingInlineEnd: "max(1.5rem, env(safe-area-inset-right))" }}
+    <header
+      className="sticky top-0 z-50 border-b border-[var(--color-border)] backdrop-blur-md"
+      style={{
+        background: "color-mix(in srgb, var(--color-background) 78%, transparent)",
+        paddingInlineStart: "max(1.5rem, env(safe-area-inset-left))",
+        paddingInlineEnd: "max(1.5rem, env(safe-area-inset-right))",
+      }}
     >
-      <div className="max-w-[80rem] mx-auto flex items-center justify-between py-3">
-        <a href="/" className="flex items-center gap-2 no-underline">
-          <span
-            aria-hidden="true"
-            className="inline-flex items-center justify-center w-6 h-6 rounded bg-[var(--color-foreground)] text-[var(--color-background)] font-heading font-bold text-sm"
-          >
-            O
-          </span>
-          <span className="font-heading font-semibold tracking-tight text-[var(--color-foreground)]">
-            Openwrite
-          </span>
-        </a>
+      <div className="max-w-[80rem] mx-auto flex items-center justify-between gap-6 py-3.5">
+        <Logo size={28} />
+
+        <nav className="hidden md:flex items-center gap-7" aria-label="Product">
+          {NAV_LINKS.map((l) => (
+            <a
+              key={l.label}
+              href={l.href}
+              className="navbar-link text-[0.875rem] font-medium no-underline transition-colors duration-200"
+              style={{ color: "var(--color-muted-foreground)", fontFamily: "var(--font-body)" }}
+            >
+              {l.label}
+            </a>
+          ))}
+        </nav>
+
         <div className="flex items-center gap-3">
           <a
             href="https://github.com/OnSyncLabs/Openwrite"
-            className="text-xs text-[var(--color-muted-foreground)] no-underline hover:underline"
+            className="navbar-link text-xs no-underline transition-colors duration-200 hidden sm:inline-block"
+            style={{ color: "var(--color-muted-foreground)", fontFamily: "var(--font-body)" }}
           >
             GitHub
           </a>
@@ -53,7 +78,7 @@ export function BrandHeader() {
             onClick={toggle}
             aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
             className="btn btn-secondary"
-            style={{ minHeight: 44, padding: "0.5rem 0.875rem" }}
+            style={{ minHeight: 40, padding: "0.4rem 0.875rem", fontFamily: "var(--font-body)" }}
           >
             {theme === "dark" ? "Light" : "Dark"}
           </button>
