@@ -1,10 +1,9 @@
 /* ============================================================
-   Landing page section-scoped additions.
-   Extends (never replaces) globals.css. Editorial signature.
-
-   SectionRule component renders inline Tailwind classes; nothing
-   here for it. The rest is utility classes consumed by Hero and
-   the four lane-2 section components.
+   Landing page section-scoped additions — 10x Bolder Pass.
+   Extends (never replaces) globals.css. Most utilities now live
+   in globals.css (.rcp-display, .rcp-cockpit-glow, .btn-indigo,
+   signature keyframes). This file owns only what's section-local
+   or Hero-specific.
    ============================================================ */
 
 /* Scroll reveal base state — default hidden, eased rise on reveal.
@@ -13,8 +12,8 @@
   opacity: 0;
   transform: translateY(12px);
   transition:
-    opacity 600ms var(--ease-out),
-    transform 600ms var(--ease-out);
+    opacity var(--dur-reveal) var(--ease-out),
+    transform var(--dur-reveal) var(--ease-out);
   will-change: opacity, transform;
 }
 
@@ -38,12 +37,12 @@
    The frame is the editorial cover image; hover is a tilt, not
    a glow. */
 .cockpit-frame {
-  transition: transform 600ms var(--ease-out);
+  transition: transform var(--dur-base) var(--ease-out);
   will-change: transform;
 }
 
 .cockpit-frame:hover {
-  transform: scale(1.02);
+  transform: scale(1.015);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -52,27 +51,3 @@
     transform: none;
   }
 }
-
-/* Hero accent SVG underline — the only infinite motion allowed in
-   the foreground. 4s linear loop, narrow stroke, sits under the
-   hero mark. Animation pauses under reduced-motion. */
-.hero-mark-rule {
-  stroke-dasharray: 60;
-  stroke-dashoffset: 0;
-  animation: hero-mark-draw 4s linear infinite;
-}
-
-@keyframes hero-mark-draw {
-  from { stroke-dashoffset: 60; }
-  to   { stroke-dashoffset: 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .hero-mark-rule {
-    animation: none;
-  }
-}
-
-/* Section zebra band — alternated by Tailwind classes
-   (`bg-[var(--color-muted)]/30` and transparent) on each section
-   element. No CSS needed here. */
