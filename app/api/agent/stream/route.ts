@@ -29,7 +29,7 @@
 // The route also persists every event to the `audit` table (Phase 2.1#5).
 
 import type { NextRequest } from "next/server";
-import { appendAudit, AuditWriteError } from "../../../../lib/audit";
+import { appendAudit, appendAuditEvent, AuditWriteError } from "../../../../lib/audit";
 import { reduce, initialState, type LiveEvent, type LiveState } from "../../../../lib/event-reducer";
 import { ThreadMap } from "../../../../lib/thread-map";
 import { getTrueForgeClient } from "../../../../lib/trueforge";
@@ -413,7 +413,19 @@ export async function buildStream(input: {
               );
               const row = st.rows[0];
               if (row?.halted && row.halt_reason === "cap") {
-                // Lock committed — treat as cap even though audit may have failed.
+                // Lock committed but audit may have failed — retry the cap audit
+                // so the durable timeline is reconstructible (Qodo: Cap audit never retried).
+                try {
+                  await appendAuditEvent(paperId, {
+                    type: "cap.exceeded",
+                    payload: {
+                      totalTokens: m.totalTokens ?? 0,
+                      totalCostInUsd: m.totalCostInUsd ?? 0,
+                    },
+                  });
+                } catch (e3) {
+                  console.error("[stream] cap audit retry failed:", (e3 as Error).message);
+                }
                 safeEnqueue(sseLine("cap.exceeded", { totalTokens: m.totalTokens ?? 0 }));
                 safeEnqueue(sseLine("turn.error", { message: "cap exceeded (audit pending)", state: "error" }));
                 return { terminal: true, next };
@@ -434,9 +446,18 @@ export async function buildStream(input: {
                 payload: { message: capDetail, metrics: m },
               } as unknown as LiveEvent);
             } catch { /* best-effort */ }
+            // Persist error status — if this fails the paper stays running and
+            // replay will be blocked (lib/replay.ts checks status running).
+            // Do not silently swallow; surface the persistence failure.
             try {
               await query(`UPDATE papers SET status = 'error', updated_at = now() WHERE id = $1 AND NOT halted`, [paperId]);
-            } catch { /* best-effort */ }
+            } catch (e3) {
+              console.error("[stream] cap-check status=error update failed:", (e3 as Error).message);
+              safeEnqueue(sseLine("turn.error", { message: "failed to persist error status — run may remain live", detail: (e3 as Error).message }));
+              // Fail closed: do not claim terminal error was durably stored.
+              // The caller sees turn.error and the DB remains running so replay
+              // is correctly blocked until the DB recovers (Qodo: Status failure leaves run live).
+            }
             return { terminal: true, next: { ...next, status: "error", terminal: { kind: "error" } } as typeof next };
           }
           const detail = "turn.done carried requiredActions but no gate had a persistable threadId/toolCallId";
