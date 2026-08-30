@@ -336,8 +336,18 @@ export async function buildStream(input: {
             const threadId = String(act.threadId ?? act.thread_id ?? "");
             const tcs = (Array.isArray(act.toolCalls) ? act.toolCalls : Array.isArray(act.tool_calls) ? act.tool_calls : []) as Array<Record<string, unknown>>;
             const first = tcs[0] ?? {};
-            const toolCallId = String(first.id ?? first.toolCallId ?? "");
-            const toolName = String(first.name ?? first.toolName ?? "tool");
+            const toolCallId = String(
+              first.id ??
+                first.toolCallId ??
+                (first as Record<string, unknown>).tool_call_id ??
+                "",
+            );
+            const toolName = String(
+              first.name ??
+                first.toolName ??
+                (first as Record<string, unknown>).tool_name ??
+                "tool",
+            );
             // Both thread_id AND tool_call_id are required by the
             // resume contract (TrueForge returns 400 if either is empty).
             // Skip the insert — the event still flows to the audit/cockpit,

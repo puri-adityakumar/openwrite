@@ -33,7 +33,7 @@ test("live-run: /paper/new start -> /paper/[slug] streams turn.paused", async ({
 
   // 1) /paper/new — pick Review, paste an arXiv URL, click Start.
   await page.goto("/paper/new");
-  await expect(page.getByRole("heading", { name: /New Paper/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Drop a paper/i })).toBeVisible();
   // Review is the default; assert it is selected.
   const reviewRadio = page.getByRole("radio", { name: /Review/i });
   await expect(reviewRadio).toHaveAttribute("aria-checked", "true");

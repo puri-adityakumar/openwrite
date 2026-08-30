@@ -44,7 +44,7 @@ async function reachVerifyGate(page: import("@playwright/test").Page) {
   // /paper/new -> Review (default) -> Start. Then live cockpit streams
   // to a paused terminal and the Verify card appears.
   await page.goto("/paper/new");
-  await expect(page.getByRole("heading", { name: /New Paper/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Drop a paper/i })).toBeVisible();
   await page.getByLabel(/Paper source URL or path/i).fill("https://arxiv.org/abs/1706.03762");
   await page.getByRole("button", { name: /Start/i }).click();
   await page.waitForURL(/\/paper\//, { timeout: 15_000 });
@@ -240,7 +240,7 @@ test.describe("Phase 4 — approval gates (TC-1 / TC-2 / TC-3)", () => {
     await expect(page.getByTestId("verify-card")).toBeVisible({ timeout: 10_000 });
     const card2 = page.getByTestId("verify-card");
     await expect(card2.getByTestId("verify-expired")).toContainText(
-      /approval expired — restart verification/,
+      /approval expired — restart verification/i,
     );
     // Allow + Deny + Kill are all disabled on the expired card.
     await expect(card2.getByTestId("verify-allow")).toBeDisabled();

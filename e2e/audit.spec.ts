@@ -16,7 +16,9 @@ test.describe("Phase 5.2 — audit page: seeded paper", () => {
     await page.goto("/paper/attention-is-all-you-need/audit");
     const timeline = page.getByTestId("audit-timeline");
     await expect(timeline).toBeVisible();
-    await expect(page.getByRole("heading", { name: /Audit — Attention Is All You Need/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Attention Is All You Need/i })).toBeVisible();
+    // Audit eyebrow is separate span (exact match avoids replay button)
+    await expect(page.getByText("Audit", { exact: true }).first()).toBeVisible();
     // Seed rows: the trail pills as ▶ rows, pulse lines as ✓ rows.
     await expect(timeline.getByTestId("audit-row")).toHaveCount(10); // 6 pills + 4 pulse lines
     await expect(timeline.getByTestId("audit-row").first()).toContainText("Source");

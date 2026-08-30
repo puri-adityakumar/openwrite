@@ -14,7 +14,15 @@ test.use({ storageState: DEMO_STATE });
 test("banner: shows Sandbox preview when Daytona is missing", async ({ page, context }) => {
   await page.goto("/dashboard");
   // Daytona key is absent in dev .env (only GMI_API_KEY is set), so
-  // the banner should be visible with the sandbox-preview badge.
+  // the banner should be visible with the sandbox-preview badge when
+  // running in live mode. In fake mode the host returns null and the
+  // banner is hidden (EnvBannerHost:53).
+  const envRes = await page.request.get("/api/env-status");
+  const env = (await envRes.json()) as { mode: string };
+  if (env.mode === "fake") {
+    await expect(page.getByTestId("env-banner")).toBeHidden();
+    return;
+  }
   await expect(page.getByTestId("env-banner")).toBeVisible();
   await expect(page.getByTestId("env-banner-sandbox-badge")).toBeVisible();
   // The copyable curl is present.

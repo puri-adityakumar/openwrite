@@ -32,7 +32,7 @@ test.describe("Phase 5.1 — halt 2-state + cap", () => {
     await signUp(context);
 
     await page.goto("/paper/new");
-    await expect(page.getByRole("heading", { name: /New Paper/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Drop a paper/i })).toBeVisible();
     await page.getByLabel(/Paper source URL or path/i).fill("https://arxiv.org/abs/1706.03762");
     await page.getByRole("button", { name: /Start/i }).click();
     await page.waitForURL(/\/paper\//, { timeout: 15_000 });
