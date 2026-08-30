@@ -84,10 +84,31 @@ export default async function PaperPage({
   // The seed paper's Pulse lines live in seed_audits.events.pulse; we
   // surface them so the first paint looks the same as the old
   // (pre-Tabs) cockpit. The live path replaces them with real SSE events.
+  // Run facts (tokens used, sandbox id) are reconstructed from the log
+  // lines when present, so the demo header shows real numbers instead of
+  // the initial zero state.
+  const seededTokens = (() => {
+    const line = seed.events.pulse
+      .slice()
+      .reverse()
+      .find((l) => /turn done · [\d,]+ tokens/.test(l));
+    if (!line) return 0;
+    const m = line.match(/turn done · ([\d,]+) tokens/);
+    return m ? Number(m[1]!.replace(/,/g, "")) : 0;
+  })();
+  const seededSandbox = (() => {
+    const line = seed.events.pulse.find((l) => /\[sandbox\]\s+(\S+)/.test(l));
+    return line ? (line.match(/\[sandbox\]\s+(\S+)/)![1] ?? null) : null;
+  })();
   const liveState = {
     ...initial,
     status: "done" as const,
     pulse: seed.events.pulse,
+    metrics: {
+      totalTokens: seededTokens,
+      costDisplay: "—",
+    },
+    sandboxId: seededSandbox,
   };
   // Mark every Trail pill as done for the seed render — the run is complete.
   const donePills = pills.map((p) => ({ ...p, state: "done" as const }));

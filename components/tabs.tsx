@@ -10,17 +10,24 @@
 //   - Style: a 1px bottom border underlines the whole tab bar; the
 //     active tab flips the bottom border to ink and the label to
 //     ink, with a thin underline on top of the bar.
+//
+// Workspace redesign (3-pane cockpit): the tab set is now configurable
+// via the optional `order`/`labels` props. The default is unchanged
+// (Summary · Claims · Authors · Audit) so the existing contract keeps
+// passing; the analysis pane passes its own set (Summary · Claims ·
+// Graphs · Audit) and folds Authors into the Summary panel.
 
 import type { ReactNode } from "react";
 
-export type TabId = "summary" | "claims" | "authors" | "audit";
-export type TabPanels = Record<TabId, ReactNode>;
+export type TabId = "summary" | "claims" | "authors" | "graphs" | "audit";
+export type TabPanels = Partial<Record<TabId, ReactNode>>;
 
 const TAB_ORDER: TabId[] = ["summary", "claims", "authors", "audit"];
 const TAB_LABEL: Record<TabId, string> = {
   summary: "Summary",
   claims: "Claims",
   authors: "Authors",
+  graphs: "Graphs",
   audit: "Audit",
 };
 
@@ -29,23 +36,27 @@ export function Tabs({
   active,
   onChange,
   panels,
+  order = TAB_ORDER,
+  labels = TAB_LABEL,
 }: {
   slug: string;
   active: TabId;
   onChange: (next: TabId) => void;
   panels: TabPanels;
+  order?: TabId[];
+  labels?: Record<TabId, string>;
 }) {
   return (
     <div data-testid="tabs">
       <div role="tablist" className="flex gap-1 border-b border-[var(--color-border)]">
-        {TAB_ORDER.map((id) => {
-          const label = TAB_LABEL[id];
+        {order.map((id) => {
+          const label = labels[id];
           const isActive = id === active;
           const baseClass =
-            "px-3 py-1.5 text-sm font-sans border-b-2 -mb-px transition-colors";
+            "px-3 py-2 text-sm font-heading border-b-2 -mb-px transition-colors";
           const stateClass = isActive
-            ? "border-[var(--color-foreground)] text-[var(--color-foreground)] font-medium"
-            : "border-transparent text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]";
+            ? "border-[var(--accent-indigo)] text-[var(--color-foreground)] font-semibold"
+            : "border-transparent text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)] font-medium";
           if (id === "audit") {
             return (
               <a

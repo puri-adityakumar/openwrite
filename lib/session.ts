@@ -1,5 +1,5 @@
 // Phase 1.2 — session guard. Used by /dashboard and /paper/* pages; redirects
-// to / when the request has no valid recap_session cookie. Also exposes
+// to /auth when the request has no valid recap_session cookie. Also exposes
 // getCurrentUser() for pages that just need the current identity.
 
 import { cookies } from "next/headers";
@@ -15,7 +15,7 @@ export async function getCurrentUser(): Promise<SessionPayload | null> {
 export async function requireUser(): Promise<SessionPayload> {
   const user = await getCurrentUser();
   if (!user) {
-    redirect("/");
+    redirect("/auth");
   }
   return user;
 }

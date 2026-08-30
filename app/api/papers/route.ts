@@ -5,6 +5,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { query } from "../../../lib/db";
 import { requireUser } from "../../../lib/session";
+import { parseSource } from "../../../lib/source-parse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,14 +63,31 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return err(400, "capTokens must be a positive integer");
   }
   const source = body.source ?? "";
-  const sourceUrl = body.sourceUrl ?? (source.startsWith("http") ? source : null);
+  // Any accepted arXiv form (bare id, /abs/, /pdf/) is stored as the
+  // canonical abstract URL so every downstream consumer sees the same
+  // provenance. Non-arXiv sources keep the legacy behaviour: http(s)
+  // strings land in source_url, everything else (fixture:, a local
+  // path) in source_pdf.
+  const parsedSource = parseSource(source);
+  const sourceUrl =
+    body.sourceUrl ??
+    (parsedSource.kind === "arxiv"
+      ? parsedSource.absUrl
+      : source.startsWith("http")
+        ? source
+        : null);
   const sourcePdf = body.sourcePdf ?? (!sourceUrl && source ? source : null);
   const title = body.title ?? null;
   // The slug is unique per (sourceUrl|fixture). For Phase 2 we generate a
   // timestamp + random suffix so successive starts of the same fixture
   // (and parallel e2e tests starting in the same millisecond) don't
   // collide on the papers_slug_key unique constraint.
-  const baseSlug = slugify(sourceUrl ?? sourcePdf ?? "paper");
+  // arXiv sources slug off "arxiv-<id>", with the id sanitized so
+  // old-style ids (cs/0301012) stay URL-safe.
+  const baseSlug =
+    parsedSource.kind === "arxiv"
+      ? `arxiv-${parsedSource.id.replace(/[^a-z0-9]+/gi, "-").replace(/(^-|-$)/g, "")}`
+      : slugify(sourceUrl ?? sourcePdf ?? "paper");
   const slug = `${baseSlug}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
   const inserted = await query<{ id: string }>(

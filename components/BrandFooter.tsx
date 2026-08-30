@@ -6,9 +6,9 @@ export function BrandFooter() {
           Powered by <a href="https://trueforge.dev" className="underline">TrueForge</a> · Daytona · GMI · Qodo
         </span>
         <span>
-          <a href="https://github.com/OnSyncLabs/Openwrite" className="underline">Source</a>
+          <a href="https://github.com/puri-adityakumar/openwrite" className="underline">Source</a>
           {" · "}
-          <a href="https://github.com/OnSyncLabs/Openwrite/blob/main/app/globals.css" className="underline">Design tokens</a>
+          <a href="https://github.com/puri-adityakumar/openwrite/blob/main/app/globals.css" className="underline">Design tokens</a>
         </span>
       </div>
     </footer>

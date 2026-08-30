@@ -9,18 +9,19 @@ import type { SVGProps } from "react";
 type LogoProps = {
   size?: number;
   showWordmark?: boolean;
+  mark?: boolean;
   className?: string;
 };
 
-export function Logo({ size = 28, showWordmark = true, className = "" }: LogoProps) {
+export function Logo({ size = 28, showWordmark = true, mark = true, className = "" }: LogoProps) {
   return (
     <a
-      href="/"
+      href="/auth"
       aria-label="Openwrite"
       className={`inline-flex items-center gap-2 no-underline ${className}`}
       style={{ color: "var(--color-foreground)" }}
     >
-      <LogoMark size={size} />
+      {mark && <LogoMark size={size} />}
       {showWordmark && (
         <span
           className="font-heading"

@@ -3,6 +3,10 @@
 import { useState } from "react";
 import { Pill } from "./Pill";
 
+// Run controls. Vocabulary: the button says exactly what happens
+// ("Pause run" / "Stop run"), and the same words appear in the
+// confirmation state. No icon-emoji — the label carries the meaning.
+
 export function HaltButton({
   paperId,
   status,
@@ -61,9 +65,9 @@ export function HaltButton({
         data-state={paused ? "stop" : "pause"}
         onClick={() => void post(action)}
         className="btn btn-secondary"
-        style={{ minHeight: 44, padding: "0.5rem 0.75rem" }}
+        style={{ minHeight: 36, padding: "0.375rem 0.875rem" }}
       >
-        {paused ? "⏹ Stop" : "⏸ Pause"}
+        {paused ? "Stop run" : "Pause run"}
       </button>
       {error && (
         <span className="text-xs text-[var(--color-destructive)]" data-testid="halt-error" role="alert">

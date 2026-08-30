@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { capChip } from "../lib/cap";
 import { Pill } from "./Pill";
 
+// Budget guard chip. When no cap is configured there is nothing to
+// guard — the chip renders nothing instead of a meaningless "Cap: —".
+
 export function CapChip({
   capUsd,
   capTokens,
@@ -32,20 +35,22 @@ export function CapChip({
     prevExceeded.current = chip.exceeded;
   }, [chip.exceeded, chip.label]);
 
+  if (!chip.active) return null;
+
   return (
     <>
       <Pill
         tone={tone}
         data-testid="cap-chip"
         data-exceeded={chip.exceeded ? "true" : "false"}
-        title={chip.active ? "Budget cap guard" : "No cap configured"}
+        title={chip.exceeded ? "Budget cap exceeded — the run stopped" : "Budget cap — the run stops here if usage crosses it"}
         style={
           chip.exceeded
             ? { borderColor: "var(--color-destructive)", color: "var(--color-destructive)" }
             : undefined
         }
       >
-        Cap: {chip.label}
+        Cap {chip.label}
       </Pill>
       {/* Live region — read by screen readers on transition. Visually
           hidden, semantically live, polite. */}

@@ -1,0 +1,949 @@
+/* ============================================================
+   Cockpit — /paper/[slug] · 3-pane workspace
+   Direction: an industry-standard reading workspace. One-line
+   header (paper · status chip · controls), a thin pipeline strip
+   while the run is live, then three panes: the paper (PDF), the
+   analysis (tabs + graphs), and the chat (Ask). Below 1024px the
+   panes collapse to one visible pane with a bottom switcher.
+   Extends (never replaces) globals.css tokens — no hex here.
+   ============================================================ */
+
+/* ---- Workspace frame ---------------------------------------- */
+
+.cockpit-ws {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 1.25rem;
+}
+
+/* ---- 1 · Header: one line, nothing wraps -------------------- */
+
+.ws-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.875rem 0;
+  border-bottom: 1px solid var(--color-border);
+  min-width: 0;
+}
+
+.ws-back {
+  flex: 0 0 auto;
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.ws-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.625rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ws-title {
+  font-family: var(--font-serif);
+  font-variation-settings: "opsz" 40, "SOFT" 30;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--color-foreground);
+  font-size: clamp(1.05rem, 1.6vw, 1.35rem);
+  margin: 0;
+  /* One line, always: the slug and the status carry the rest. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-slug {
+  font-family: var(--font-num);
+  font-size: 0.6875rem;
+  color: var(--color-muted-foreground);
+  letter-spacing: 0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
+/* ---- Status chip + run-log disclosure ------------------------ */
+/* The old 20rem run rail (Pulse, tokens, sandbox) collapsed into
+   a disclosure attached to the status chip. The panel stays in the
+   DOM while collapsed (CSS-hidden) so the log never unmounts. */
+
+.status-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-card);
+  padding: 0.1875rem 0.25rem 0.1875rem 0.625rem;
+  min-width: 0;
+}
+
+.status-chip-face {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  color: var(--color-foreground);
+  white-space: nowrap;
+}
+
+.status-chip-dot {
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 50%;
+  background: var(--color-muted-foreground);
+  flex-shrink: 0;
+}
+
+.status-chip[data-status="running"] .status-chip-dot {
+  background: var(--accent-indigo);
+  animation: pipeline-breathe 1.6s ease-in-out infinite;
+}
+
+.status-chip[data-status="queued"] .status-chip-dot { background: var(--color-muted-foreground); }
+
+.status-chip[data-status="paused"] .status-chip-dot {
+  background: var(--warn);
+  animation: pipeline-breathe 1.6s ease-in-out infinite;
+}
+
+.status-chip[data-status="error"] .status-chip-dot { background: var(--color-destructive); }
+.status-chip[data-status="done"] .status-chip-dot { background: var(--good); }
+
+.status-toggle {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-num);
+  font-size: 0.6875rem;
+  color: var(--color-muted-foreground);
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+.status-toggle:hover {
+  color: var(--color-foreground);
+  background: var(--color-secondary);
+}
+
+.status-caret { font-size: 0.5625rem; }
+
+.status-panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 50;
+  width: min(24rem, calc(100vw - 2.5rem));
+  max-height: min(32rem, 70vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.875rem;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 32px hsl(220 9% 15% / 0.14);
+}
+
+.status-panel[data-open="false"] { display: none; }
+
+.status-panel-note {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  color: var(--color-muted-foreground);
+}
+
+.status-panel-foot {
+  margin: 0;
+  font-size: 0.6875rem;
+  color: var(--color-muted-foreground);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-chip .status-chip-dot { animation: none; }
+}
+
+/* Facts list — tokens / sandbox, demoted to data voice. */
+.run-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  font-family: var(--font-num);
+  font-size: 0.75rem;
+  color: var(--color-muted-foreground);
+}
+
+.run-facts dd { margin: 0; color: var(--color-foreground); }
+
+/* ---- 2 · Pipeline strip (thin, live runs only) --------------- */
+/* Structure is information: the pipeline really is a sequence,
+   so the stations are drawn as connected steps. Thinner than the
+   pre-workspace strip: smaller dots, tighter pills, one row that
+   scrolls horizontally instead of wrapping. */
+
+.ws-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.375rem 0;
+  border-bottom: 1px solid var(--color-border);
+  min-width: 0;
+}
+
+.pipeline {
+  --pipeline-link: var(--color-border);
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.25rem 0;
+  padding: 0.125rem 0;
+  margin: 0;
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.pipeline-station {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.1875rem 0.625rem;
+  border-radius: var(--radius-full);
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-muted-foreground);
+  background: var(--color-secondary);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+/* The connector between stations — a real line, not a gap. */
+.pipeline-link {
+  flex: 0 0 1.25rem;
+  height: 1px;
+  background: var(--pipeline-link);
+}
+
+.pipeline-station[data-state="done"] {
+  color: var(--color-foreground);
+  background: transparent;
+  border-color: var(--color-border);
+}
+
+.pipeline-station[data-state="done"] .pipeline-dot {
+  background: var(--good);
+}
+
+.pipeline-station[data-state="running"] {
+  color: var(--color-foreground);
+  background: var(--accent-indigo-soft);
+  border-color: var(--accent-indigo);
+}
+
+.pipeline-station[data-state="running"] .pipeline-dot {
+  background: var(--accent-indigo);
+  animation: pipeline-breathe 1.6s ease-in-out infinite;
+}
+
+.pipeline-station[data-state="error"] {
+  color: var(--color-destructive);
+  border-color: var(--color-destructive);
+  background: hsl(0 84% 60% / 0.06);
+}
+
+.pipeline-station[data-state="error"] .pipeline-dot {
+  background: var(--color-destructive);
+}
+
+.pipeline-dot {
+  width: 0.3125rem;
+  height: 0.3125rem;
+  border-radius: 50%;
+  background: var(--color-border);
+  flex-shrink: 0;
+}
+
+.pipeline-station[data-state="paused"] {
+  border-color: var(--warn);
+  background: hsl(38 92% 60% / 0.08);
+}
+
+.pipeline-station[data-state="paused"] .pipeline-dot {
+  background: var(--warn);
+}
+
+@keyframes pipeline-breathe {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pipeline-station .pipeline-dot { animation: none; }
+}
+
+/* Pause notice — inline in the strip, compact pill voice. */
+.cockpit-paused-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  color: var(--color-foreground);
+  background: hsl(38 92% 60% / 0.08);
+  border: 1px solid hsl(38 92% 60% / 0.4);
+  border-radius: var(--radius-full);
+  padding: 0.25rem 0.625rem;
+  white-space: nowrap;
+}
+
+/* ---- 3 · Chat pane = the harness ------------------------------ */
+/* The approval gate, the run log, and the Q&A all stream through the
+   chat pane. The gate is a collapsible window card here — chat-only,
+   never a page-wide banner — so the PDF and analysis stay put. */
+
+.chat-feed {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  overflow: hidden;
+}
+
+.chat-log {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+/* The run log as a chat feed: stamped events stay compact and muted,
+   tool pings become chips, the agent's prose renders as bubbles. The
+   feed scrolls itself and sticks to the newest entry. */
+.pulse-feed {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-right: 0.125rem;
+}
+
+.pulse-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-family: var(--font-num);
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  color: var(--color-muted-foreground);
+  min-width: 0;
+}
+
+.pulse-row .pulse-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pulse-time {
+  flex: 0 0 auto;
+  opacity: 0.65;
+  font-size: 0.625rem;
+}
+
+.pulse-row-tool .pulse-tool-name {
+  color: var(--color-foreground);
+}
+
+.pulse-tool-outcome { color: var(--good); }
+.pulse-tool-outcome[data-ok="false"] { color: var(--color-destructive); }
+
+.pulse-msg {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-secondary);
+  padding: 0.625rem 0.75rem;
+  min-width: 0;
+}
+
+.pulse-msg-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.375rem;
+}
+
+.pulse-hb {
+  font-family: var(--font-num);
+  font-size: 0.625rem;
+  color: var(--color-muted-foreground);
+  opacity: 0.7;
+}
+
+.pulse-empty {
+  font-size: 0.8125rem;
+  color: var(--color-muted-foreground);
+}
+
+.pulse-empty-hint {
+  margin-top: 0.25rem;
+  font-size: 0.6875rem;
+  opacity: 0.75;
+}
+
+/* Markdown inside agent bubbles — the .md subset from components/md.tsx. */
+.pulse-msg .md {
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--color-foreground);
+}
+
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md h3 { font-family: var(--font-heading); font-size: 0.875rem; font-weight: 600; margin: 0.75rem 0 0.375rem; }
+.md h4 { font-family: var(--font-heading); font-size: 0.8125rem; font-weight: 600; margin: 0.75rem 0 0.375rem; }
+.md p { margin: 0.375rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.md ul, .md ol { margin: 0.375rem 0; padding-inline-start: 1.25rem; }
+.md li { margin: 0.125rem 0; }
+.md code {
+  font-family: var(--font-num);
+  font-size: 0.75rem;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 0 0.25rem;
+}
+.md pre.md-pre {
+  font-family: var(--font-num);
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.625rem;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+.md pre.md-pre code {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font-size: inherit;
+}
+
+.gate-window {
+  flex: 0 0 auto;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-lg);
+  background: hsl(38 92% 60% / 0.06);
+  overflow: hidden;
+}
+
+.gate-window-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-heading);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-foreground);
+}
+
+.gate-window-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.gate-window-caret {
+  color: var(--color-muted-foreground);
+}
+
+/* The verify card is tall; the collapsed-window body scrolls inside a
+   capped region so the log + composer below stay reachable. */
+.gate-window-body {
+  padding: 0 0.75rem 0.75rem;
+  max-height: min(55%, 18rem);
+  overflow-y: auto;
+}
+
+.gate-window[data-open="false"] .gate-window-body { display: none; }
+
+/* ---- 4 · The 3-pane grid -------------------------------------- */
+
+.ws-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 40fr) minmax(0, 35fr) minmax(0, 25fr);
+  gap: 0.75rem;
+  /* Fill the viewport under the brand bar + cockpit chrome; each pane
+     scrolls internally instead of pushing the others away. */
+  height: calc(100dvh - 10.5rem);
+  min-height: 26rem;
+  margin: 0.75rem 0 0;
+  min-width: 0;
+}
+
+.ws-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.ws-pane-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.ws-pane-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.875rem;
+}
+
+.ws-eyebrow {
+  font-family: var(--font-heading);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted-foreground);
+}
+
+/* PDF pane — the paper itself. */
+
+.pdf-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  padding: 0.5rem;
+}
+
+.pdf-frame {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-secondary);
+  display: block;
+}
+
+.pdf-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.pdf-empty p {
+  margin: 0;
+  max-width: 16rem;
+  font-size: 0.8125rem;
+  color: var(--color-muted-foreground);
+}
+
+.pdf-empty-mark {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--accent-indigo-soft);
+  border: 1px solid var(--accent-indigo);
+  animation: pipeline-breathe 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pdf-empty-mark { animation: none; }
+}
+
+/* Authors fold under the Summary panel. */
+.ws-authors {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--color-border);
+}
+
+/* ---- Chat pane — Ask pinned to the bottom --------------------- */
+
+.ws-pane-chat .ask-block {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 0;
+  padding: 0.875rem;
+}
+
+/* Reading order inside the pane: label + hint up top, the answer
+   card takes the middle and scrolls, the composer docks at the
+   bottom via margin-top:auto (order handles the answered case). */
+.ws-pane-chat .ask-block > .ask-hint { order: 1; margin-top: 0.25rem; }
+.ws-pane-chat .ask-block > .ask-answer { order: 2; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.ws-pane-chat .ask-block > .ask-row { order: 3; margin-top: auto; padding-top: 0.75rem; }
+
+/* Inside the harness feed the pane's padding belongs to .chat-feed.
+   The feed (log + bubbles) takes the flexible middle; the Ask form
+   docks under it with a capped answer card. */
+.ws-pane-chat .chat-feed .ask-block { flex: 0 0 auto; padding: 0; }
+.ws-pane-chat .chat-feed .ask-block > .ask-answer { flex: 0 0 auto; max-height: 12rem; overflow-y: auto; }
+
+.ask-hint {
+  margin-top: 0.25rem;
+  font-size: 0.8125rem;
+  color: var(--color-muted-foreground);
+}
+
+.ask-hint code {
+  font-family: var(--font-num);
+  font-size: 0.75rem;
+}
+
+/* ---- Mobile switcher (<1024px) -------------------------------- */
+
+.ws-switcher { display: none; }
+
+/* ---- Tab panel bodies + graphs tiles -------------------------- */
+
+.claims-note {
+  font-size: 0.8125rem;
+  color: var(--color-muted-foreground);
+}
+
+/* Claims table rows: page + confidence are data, claim is prose. */
+.claims-page {
+  font-family: var(--font-num);
+  font-size: 0.75rem;
+  color: var(--color-muted-foreground);
+}
+
+.graphs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.75rem;
+}
+
+.graph-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-secondary);
+  padding: 0.75rem;
+  min-width: 0;
+}
+
+.graph-title {
+  font-family: var(--font-heading);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted-foreground);
+}
+
+.graph-caption {
+  font-family: var(--font-body);
+  font-size: 0.6875rem;
+  color: var(--color-muted-foreground);
+}
+
+.graph-body { margin-top: 0.625rem; }
+
+.graph-empty {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--color-muted-foreground);
+}
+
+/* (a) Score histogram — pure CSS bars, heights are inline styles. */
+.graph-hist {
+  display: flex;
+  align-items: stretch;
+  gap: 0.375rem;
+  height: 6.5rem;
+}
+
+.graph-hist-col {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.125rem;
+}
+
+.graph-hist-bar {
+  width: 100%;
+  max-width: 2rem;
+  border-radius: 3px 3px 0 0;
+  background: var(--accent-indigo);
+  min-height: 2px;
+}
+
+.graph-hist-bar.is-top { background: var(--accent-indigo-hover); }
+
+.graph-hist-count {
+  font-family: var(--font-num);
+  font-size: 0.625rem;
+  color: var(--color-foreground);
+  min-height: 0.875rem;
+}
+
+.graph-hist-label {
+  font-family: var(--font-num);
+  font-size: 0.5625rem;
+  color: var(--color-muted-foreground);
+  white-space: nowrap;
+}
+
+/* (c) Usage bar. */
+.graph-bignum {
+  display: flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  font-family: var(--font-num);
+  font-size: 1.5rem;
+  color: var(--color-foreground);
+}
+
+.graph-bignum-unit {
+  font-family: var(--font-body);
+  font-size: 0.6875rem;
+  color: var(--color-muted-foreground);
+}
+
+.graph-usage { display: flex; flex-direction: column; gap: 0.375rem; margin-top: 0.625rem; }
+
+.graph-usage-track {
+  height: 0.375rem;
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.graph-usage-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent-indigo);
+}
+
+.graph-usage-fill.is-over { background: var(--color-destructive); }
+
+/* (d) Evidence bars + run facts fallback. */
+.graph-bar-row { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.graph-bar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.graph-bar-label {
+  font-family: var(--font-body);
+  font-size: 0.6875rem;
+  color: var(--color-muted-foreground);
+  white-space: nowrap;
+}
+
+.graph-bar-track {
+  display: block;
+  height: 0.375rem;
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.graph-bar-fill { display: block; height: 100%; }
+.graph-bar-fill.is-good { background: var(--good); }
+.graph-bar-fill.is-idle { background: var(--color-muted-foreground); }
+
+.graph-bar-value {
+  font-family: var(--font-num);
+  font-size: 0.6875rem;
+  color: var(--color-foreground);
+}
+
+.graph-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  font-family: var(--font-num);
+  font-size: 0.75rem;
+  color: var(--color-muted-foreground);
+}
+
+.graph-facts dd { margin: 0; color: var(--color-foreground); }
+
+/* ---- Coverage: page tiles (now living in the Graphs tile) ----- */
+
+.cov-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.cov-tile {
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: 3px;
+  border: 1px solid var(--color-border);
+  background:
+    linear-gradient(to top, var(--accent-indigo) 0%, var(--accent-indigo) var(--cov, 0%), transparent var(--cov, 0%));
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+
+.cov-tile:hover { border-color: var(--accent-indigo); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cov-tile { transition: none; }
+}
+
+/* ---- TL;DR / abstract voices (Summary tab) -------------------- */
+
+/* TL;DR — the receipt voice. The one serif moment on the page. */
+.tldr {
+  font-family: var(--font-serif);
+  font-variation-settings: "opsz" 14, "SOFT" 30;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 1.125rem;
+  line-height: 1.45;
+  color: var(--color-foreground);
+  padding-left: 1.25rem;
+  border-left: 3px solid var(--accent-indigo);
+}
+
+/* Abstract — set for reading, not for scanning. */
+.paper-abstract {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: var(--color-foreground);
+  margin: 1.25rem 0 0;
+}
+
+.tldr-footer {
+  margin-top: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--color-muted-foreground);
+}
+
+.cockpit-label {
+  font-family: var(--font-heading);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted-foreground);
+}
+
+/* ---- Mobile: one visible pane + bottom switcher --------------- */
+
+@media (max-width: 1023px) {
+  .ws-header { flex-wrap: wrap; row-gap: 0.5rem; }
+  .ws-heading { flex-basis: 100%; order: 3; }
+  .ws-slug { display: none; }
+  .ws-header-actions { flex-wrap: wrap; row-gap: 0.5rem; }
+
+  .ws-grid {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    min-height: 0;
+  }
+
+  .ws-pane { display: none; }
+  .ws-pane[data-active="true"] {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: calc(100dvh - 16rem);
+  }
+
+  .ws-switcher {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    display: flex;
+    background: var(--color-card);
+    border-top: 1px solid var(--color-border);
+    /* Respect the home-indicator safe area on seated iPads/phones. */
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  .ws-switcher button {
+    flex: 1 1 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    font-family: var(--font-heading);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--color-muted-foreground);
+    padding: 0.75rem 0.5rem;
+  }
+
+  .ws-switcher button.is-active {
+    color: var(--color-foreground);
+    box-shadow: inset 0 -2px 0 var(--accent-indigo);
+  }
+
+  .cockpit-ws { padding-bottom: 4rem; }
+}

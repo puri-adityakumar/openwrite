@@ -27,7 +27,7 @@ is performed by the agent running browser-use, which then saves PNGs to
 
 Beat-by-beat:
   1. Landing            -> /                  -> 00-landing.png
-  2. Sign in            -> /signup            -> 02-signup.png
+  2. Sign in            -> /auth              -> 02-signup.png
   3. Dashboard          -> /dashboard         -> 03-dashboard.png
   4. New paper form     -> /paper/new         -> 04-new-paper.png
   5. Live cockpit (running)

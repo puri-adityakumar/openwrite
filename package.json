@@ -1,7 +1,7 @@
 {
   "name": "openwrite",
   "version": "1.0.0",
-  "description": "",
+  "description": "An agent that asks permission before it touches anything — drop a research paper, watch a TrueForge-backed agent dissect it behind approval gates.",
   "main": "index.js",
   "directories": {
     "doc": "docs",
@@ -22,7 +22,7 @@
     "type": "git",
     "url": "git+https://github.com/puri-adityakumar/openwrite.git"
   },
-  "keywords": [],
+  "keywords": ["research-papers", "ai-agents", "approval-gates", "trueforge", "nextjs", "agent-harness"],
   "author": "",
   "license": "MIT",
   "type": "module",

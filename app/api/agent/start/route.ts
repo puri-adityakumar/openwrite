@@ -13,6 +13,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { query } from "../../../../lib/db";
 import { requireUser } from "../../../../lib/session";
 import { getTrueForgeClient } from "../../../../lib/trueforge";
+import { parseSource } from "../../../../lib/source-parse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,12 +54,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   );
   if (owner.rows.length === 0) return err(404, "paper not found");
 
+  // Normalize the first user message. Any accepted arXiv form (bare id,
+  // /abs/, /pdf/) becomes a canonical, explicit download instruction
+  // with an abstract-page fallback so the agent never has to guess from
+  // a raw link; every other source passes through verbatim.
+  const parsedSource = parseSource(body.source);
+  const source =
+    parsedSource.kind === "arxiv"
+      ? `Download the paper PDF at ${parsedSource.pdfUrl} (arXiv:${parsedSource.id}${parsedSource.version ?? ""}). If the direct PDF fetch fails, fall back to the abstract page ${parsedSource.absUrl}.`
+      : body.source;
+
   // Create session + first turn against the TrueForge client.
   const client = getTrueForgeClient();
   const { sessionId, turnId } = await client.startSession({
     paperId: body.paperId,
     mode: body.mode,
-    source: body.source,
+    source,
   });
 
   // Persist session_id/turn_id + flip status to "running".

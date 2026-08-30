@@ -1,4 +1,7 @@
-// Phase 3.1 — Summary tab.
+// Phase 3.1 — Summary tab. Phase 2 redesign: the TL;DR leads in the
+// receipt voice (the page's one serif moment), the abstract follows
+// set for reading, counts close. No duplicate title — the header
+// already says which paper this is.
 
 export type SummaryData = {
   title: string;
@@ -10,15 +13,14 @@ export type SummaryData = {
 
 export function Summary({ data }: { data: SummaryData }) {
   return (
-    <div data-testid="summary-tab" className="card">
-      <h3 className="text-lg">{data.title}</h3>
-      <p className="mt-3 text-sm leading-7">{data.abstract}</p>
-      <div className="mt-4 rounded border border-[var(--color-border)] bg-[var(--color-secondary)] p-3 text-sm">
-        <span className="rcp-eyebrow" style={{ marginRight: "0.5rem" }}>TL;DR</span>
-        {data.tldr}
-      </div>
-      <p className="mt-4 text-xs text-[var(--color-muted-foreground)]" data-testid="summary-counts">
-        {data.claims_count} claims · {data.evidence_count} evidence
+    <div data-testid="summary-tab">
+      <span className="cockpit-label">In one line</span>
+      <blockquote className="tldr mt-3">{data.tldr}</blockquote>
+      <p className="paper-abstract">{data.abstract}</p>
+      <p className="tldr-footer" data-testid="summary-counts">
+        {data.claims_count} {data.claims_count === 1 ? "claim" : "claims"} ·{" "}
+        {data.evidence_count} {data.evidence_count === 1 ? "piece of evidence" : "pieces of evidence"} — each
+        one links to the page it came from.
       </p>
     </div>
   );

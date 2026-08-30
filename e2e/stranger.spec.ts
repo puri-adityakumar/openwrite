@@ -57,23 +57,21 @@ test("stranger: landing -> login -> dashboard -> cockpit first paint", async ({ 
   await card.click();
   await page.waitForURL(/\/paper\/attention-is-all-you-need/);
 
-  // All four seeded surfaces must render.
-  // Trail: 6 pills, all labelled. Scope to the trail-pills testid so
-  // the coverage legend text doesn't trip strict-mode matching.
-  const trail = page.getByTestId("trail-pills");
-  for (const label of ["Source", "Parse", "Extract", "Score", "Verify", "Done"]) {
-    await expect(trail.getByText(label, { exact: true })).toBeVisible();
-  }
+  // Pipeline strip: hidden once a run is done — the seeded paper is
+  // finished, so the cockpit goes straight to the report.
+  await expect(page.getByTestId("trail-pills")).toHaveCount(0);
 
-  // Coverage grid: 10 cells. We don't assert visual structure, just
-  // that the testid is present.
+  // Coverage grid moved into the Graphs tab of the analysis pane.
+  await page.getByRole("tab", { name: "Graphs" }).click();
   await expect(page.getByTestId("coverage-grid")).toBeVisible();
 
   // Summary tab default — title + TL;DR + abstract snippet.
+  await page.getByRole("tab", { name: "Summary" }).click();
   await expect(page.getByRole("heading", { name: /Attention Is All You Need/i }).first()).toBeVisible();
   await expect(page.getByText(/Transformer/i).first()).toBeVisible();
 
-  // Pulse: 5 lines, the first matches the seed.
+  // Pulse: the run log streams in the Chat (harness) pane — directly
+  // visible, no disclosure anymore.
   const pulse = page.getByTestId("pulse");
   await expect(pulse.getByText(/8 authors/i)).toBeVisible();
   await expect(pulse.getByText(/multi-head/i)).toBeVisible();

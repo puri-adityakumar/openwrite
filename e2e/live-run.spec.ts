@@ -53,7 +53,9 @@ test("live-run: /paper/new start -> /paper/[slug] streams turn.paused", async ({
   await expect(page.getByTestId("halt-btn")).toBeVisible();
   await expect(page.getByTestId("cap-chip")).toBeVisible();
 
-  // 4) Coverage grid exists (may be empty if no tool call).
+  // 4) Coverage grid exists (may be empty if no tool call); it lives
+  //    in the Graphs tab of the analysis pane.
+  await page.getByRole("tab", { name: "Graphs" }).click();
   await expect(page.getByTestId("coverage-grid")).toBeVisible();
 
   // 5) Trail: should show either verify running (if paused) or done.

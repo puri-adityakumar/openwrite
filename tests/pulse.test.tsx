@@ -1,18 +1,18 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from "vitest";
-import { render } from "@testing-library/react";
-import { cleanup } from "@testing-library/react";
-import { afterEach } from "vitest";
-import { Pulse } from "../components/pulse";
+import { describe, it, expect, afterEach } from "vitest";
+import { render, cleanup } from "@testing-library/react";
+import { Pulse, toPulseEntry } from "../components/pulse";
 import type { LiveState } from "../lib/event-reducer";
 
-// Phase 3.1 — Pulse component contract (RED first).
-//
-// Pinned by docs/ui-mockups.md and the Phase 3 plan:
-//   - exactly 5 lines
-//   - monospace, HH:MM:SS [role] message format
-//   - 15 s heartbeat line visible as a comment-style "hb" or similar
-//   - role prefix from the server-mirrored ThreadMap (not parsed from text)
+// Pulse component contract — the run log as a chat feed:
+//   - stamped event lines render as compact activity rows with the
+//     literal `[role]` chip preserved
+//   - tool responses (`tool -> ok`) render as tool chip rows
+//   - model prose (`<messageId>: <markdown>`) renders as ONE chat
+//     bubble with the markdown subset rendered (headings, bold, fences)
+//     and the messageId dropped
+//   - heartbeat renders as its own row at the bottom
+//   - seed-style untimestamped lines render as activity rows verbatim
 
 function makeStateWith(lines: string[]): LiveState {
   return {
@@ -30,89 +30,121 @@ function makeStateWith(lines: string[]): LiveState {
 
 afterEach(() => cleanup());
 
-describe("Pulse — 5-line cap", () => {
-  it("renders at most 5 lines, taking the last 5 from the input", () => {
-    const lines = [
-      "10:00:00 [agent]    turn started",
-      "10:00:01 [reader]   fetched §1",
-      "10:00:02 [reader]   fetched §2",
-      "10:00:03 [searcher] found 3 works",
-      "10:00:04 [extractor] extracted 2 claims",
-      "10:00:05 [verifier] proposing Verify gate",
-      "10:00:06 [verifier] reproduced 91.7%",
-    ];
-    // No heartbeat here — the 5-line cap is the event budget.
-    const { container } = render(<Pulse state={makeStateWith(lines)} lastHeartbeat={null} />);
-    const items = container.querySelectorAll('[data-testid="pulse-line"]');
-    expect(items.length).toBe(5);
-    // The last 5 input lines should be the first 5 rendered (newest at bottom).
-    expect(items[0]?.textContent).toContain("10:00:02");
-    expect(items[4]?.textContent).toContain("10:00:06");
+describe("Pulse — line classification", () => {
+  it("classifies stamped events, tool responses, and model prose", () => {
+    expect(toPulseEntry("10:00:00 [agent]    turn started")).toMatchObject({
+      kind: "activity",
+      role: "agent",
+      text: "turn started",
+    });
+    expect(toPulseEntry("10:00:01 [agent]    tool -> ok")).toMatchObject({
+      kind: "tool",
+      name: "tool",
+      outcome: "ok",
+    });
+    expect(
+      toPulseEntry("10:00:02 [gate]     bash (call_1) awaiting approval"),
+    ).toMatchObject({ kind: "activity", role: "gate" });
+    expect(toPulseEntry("10:00:03 [agent]    subagent: repro worker")).toMatchObject({
+      kind: "activity",
+    });
+    expect(toPulseEntry("10:00:04 [sandbox]  sbx_123 (fresh)")).toMatchObject({
+      kind: "activity",
+      role: "sandbox",
+    });
   });
 
-  it("renders fewer than 5 lines when the input has fewer than 5", () => {
-    const lines = ["10:00:00 [agent]    turn started"];
-    const { container } = render(<Pulse state={makeStateWith(lines)} lastHeartbeat={null} />);
-    const items = container.querySelectorAll('[data-testid="pulse-line"]');
-    expect(items.length).toBe(1);
+  it("extracts the markdown body and drops the messageId from model prose", () => {
+    const entry = toPulseEntry(
+      "10:00:05 [agent]    01m19v23w1rjcqst: ## Unable to complete\n\nThe download failed.",
+    );
+    expect(entry.kind).toBe("message");
+    expect((entry as { text: string }).text).toBe(
+      "## Unable to complete\n\nThe download failed.",
+    );
   });
 
-  it("Qodo #5: heartbeat takes one of the 5 slots (5 events + hb = 5 total)", () => {
-    const lines = [
-      "10:00:00 [agent]    turn started",
-      "10:00:01 [reader]   fetched §1",
-      "10:00:02 [reader]   fetched §2",
-      "10:00:03 [searcher] found 3 works",
-      "10:00:04 [extractor] extracted 2 claims",
-    ];
-    const { container } = render(<Pulse state={makeStateWith(lines)} lastHeartbeat="10:00:15" />);
-    const items = container.querySelectorAll('[data-testid="pulse-line"]');
-    const hb = container.querySelector('[data-testid="pulse-heartbeat"]');
-    // Heartbeat reserves a slot: 4 event lines + 1 hb = 5 total.
-    expect(items.length).toBe(4);
-    expect(hb).not.toBeNull();
-    expect(container.querySelector('[data-testid="pulse"]')?.getAttribute("data-line-count")).toBe("5");
-  });
-
-  it("Qodo #5: 7 events + hb shows only the last 4 events + hb", () => {
-    const lines = [
-      "10:00:00 [agent]    turn started",
-      "10:00:01 [reader]   fetched §1",
-      "10:00:02 [reader]   fetched §2",
-      "10:00:03 [searcher] found 3 works",
-      "10:00:04 [extractor] extracted 2 claims",
-      "10:00:05 [verifier] proposing Verify gate",
-      "10:00:06 [verifier] reproduced 91.7%",
-    ];
-    const { container } = render(<Pulse state={makeStateWith(lines)} lastHeartbeat="10:00:15" />);
-    const items = container.querySelectorAll('[data-testid="pulse-line"]');
-    expect(items.length).toBe(4);
-    expect(items[0]?.textContent).toContain("10:00:03");
-    expect(items[3]?.textContent).toContain("10:00:06");
-    expect(container.querySelector('[data-testid="pulse"]')?.getAttribute("data-line-count")).toBe("5");
+  it("keeps seed-style untimestamped lines verbatim as activity", () => {
+    expect(toPulseEntry("8 authors · 11 figures · 4 tables")).toEqual({
+      kind: "activity",
+      time: "",
+      role: "agent",
+      text: "8 authors · 11 figures · 4 tables",
+    });
   });
 });
 
-describe("Pulse — role prefix format", () => {
-  it("each line keeps its `[role]` prefix verbatim", () => {
+describe("Pulse — chat feed rendering", () => {
+  it("renders stamped events as compact rows with role chips verbatim", () => {
     const lines = [
       "10:00:00 [agent]    turn started",
       "10:00:01 [reader]   fetched §1",
       "10:00:02 [searcher] found 3 works",
     ];
     const { container } = render(<Pulse state={makeStateWith(lines)} lastHeartbeat={null} />);
-    const items = container.querySelectorAll('[data-testid="pulse-line"]');
-    expect(items[0]?.textContent).toMatch(/\[agent\]/);
-    expect(items[1]?.textContent).toMatch(/\[reader\]/);
-    expect(items[2]?.textContent).toMatch(/\[searcher\]/);
+    const rows = container.querySelectorAll('[data-testid="pulse-line"]');
+    expect(rows.length).toBe(3);
+    expect(rows[0]?.textContent).toContain("[agent]");
+    expect(rows[0]?.textContent).toContain("turn started");
+    expect(rows[1]?.textContent).toMatch(/\[reader\]/);
+    expect(rows[2]?.textContent).toMatch(/\[searcher\]/);
+  });
+
+  it("renders a model message as one bubble with markdown headings and bold", () => {
+    const { container } = render(
+      <Pulse
+        state={makeStateWith([
+          "10:00:00 [agent]    01m19v23w1rjcqst: ## Unable to complete\n\n**Tool limitations:** no web-fetch tool.",
+        ])}
+        lastHeartbeat={null}
+      />,
+    );
+    const msg = container.querySelector('[data-kind="message"]');
+    expect(msg).not.toBeNull();
+    expect(msg?.querySelector("h3")?.textContent).toBe("Unable to complete");
+    expect(msg?.querySelector("strong")?.textContent).toBe("Tool limitations:");
+    // The raw messageId must NOT leak into the bubble.
+    expect(msg?.textContent).not.toContain("01m19v23w1rjcqst");
+  });
+
+  it("renders fenced code blocks as pre/code", () => {
+    const { container } = render(
+      <Pulse
+        state={makeStateWith([
+          "10:00:00 [agent]    01m19v2abcdef: Run this:\n```bash\ncurl -L -o paper.pdf https://arxiv.org/pdf/2608.05446\n```",
+        ])}
+        lastHeartbeat={null}
+      />,
+    );
+    const pre = container.querySelector("pre.md-pre code");
+    expect(pre?.textContent).toContain("curl -L -o paper.pdf");
+  });
+
+  it("renders tool responses as chip rows with the outcome", () => {
+    const { container } = render(
+      <Pulse state={makeStateWith(["10:00:00 [agent]    tool -> ok"])} lastHeartbeat={null} />,
+    );
+    const row = container.querySelector('[data-kind="tool"]');
+    expect(row?.textContent).toContain("tool");
+    expect(row?.textContent).toContain("ok");
+  });
+
+  it("shows the empty state when there are no events and no heartbeat", () => {
+    const { container } = render(<Pulse state={makeStateWith([])} lastHeartbeat={null} />);
+    expect(container.querySelector('[data-testid="pulse-empty"]')).not.toBeNull();
+  });
+
+  it("exposes the visible entry count on the feed container", () => {
+    const lines = ["10:00:00 [agent]    turn started", "10:00:01 [agent]    tool -> ok"];
+    const { container } = render(<Pulse state={makeStateWith(lines)} lastHeartbeat={null} />);
+    expect(container.querySelector('[data-testid="pulse"]')?.getAttribute("data-line-count")).toBe("2");
   });
 });
 
 describe("Pulse — heartbeat", () => {
-  it("renders a heartbeat line at the bottom when lastHeartbeat is set", () => {
-    const lines = ["10:00:00 [agent]    turn started"];
+  it("renders a heartbeat row at the bottom when lastHeartbeat is set", () => {
     const { container } = render(
-      <Pulse state={makeStateWith(lines)} lastHeartbeat="10:00:15" />,
+      <Pulse state={makeStateWith(["10:00:00 [agent]    turn started"])} lastHeartbeat="10:00:15" />,
     );
     const hb = container.querySelector('[data-testid="pulse-heartbeat"]');
     expect(hb).not.toBeNull();
@@ -121,9 +153,9 @@ describe("Pulse — heartbeat", () => {
   });
 
   it("does not render a heartbeat when lastHeartbeat is null", () => {
-    const lines = ["10:00:00 [agent]    turn started"];
-    const { container } = render(<Pulse state={makeStateWith(lines)} lastHeartbeat={null} />);
-    const hb = container.querySelector('[data-testid="pulse-heartbeat"]');
-    expect(hb).toBeNull();
+    const { container } = render(
+      <Pulse state={makeStateWith(["10:00:00 [agent]    turn started"])} lastHeartbeat={null} />,
+    );
+    expect(container.querySelector('[data-testid="pulse-heartbeat"]')).toBeNull();
   });
 });

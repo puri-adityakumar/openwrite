@@ -18,8 +18,8 @@ export function Claims({
 }) {
   if (claims.length === 0) {
     return (
-      <div data-testid="claims-tab" className="text-sm text-[var(--color-muted-foreground)]">
-        No claims extracted yet.
+      <div data-testid="claims-tab" className="claims-note">
+        No claims extracted yet — they appear here as the agent reads the paper.
       </div>
     );
   }
@@ -31,7 +31,7 @@ export function Claims({
             <th className="px-3 py-2 font-normal">Claim</th>
             <th className="px-3 py-2 font-normal">Evidence</th>
             <th className="px-3 py-2 font-normal">Page</th>
-            <th className="px-3 py-2 font-normal">Conf.</th>
+            <th className="px-3 py-2 font-normal">Confidence</th>
           </tr>
         </thead>
         <tbody>
@@ -45,10 +45,10 @@ export function Claims({
                 onClick={() => onOpenClaim(c)}
                 className="cursor-pointer bg-[var(--color-card)] hover:bg-[var(--color-secondary)]"
               >
-                <td className="px-3 py-2 align-top text-[var(--color-foreground)]">{c.text}</td>
-                <td className="px-3 py-2 align-top text-[var(--color-muted-foreground)]">{c.evidence}</td>
-                <td className="px-3 py-2 align-top text-[var(--color-foreground)]">{c.page ?? "—"}</td>
-                <td className="px-3 py-2 align-top">
+                <td className="px-3 py-2.5 align-top text-[var(--color-foreground)]">{c.text}</td>
+                <td className="px-3 py-2.5 align-top text-[var(--color-muted-foreground)]">{c.evidence}</td>
+                <td className="px-3 py-2.5 align-top claims-page">{c.page ?? "—"}</td>
+                <td className="px-3 py-2.5 align-top">
                   <span
                     data-testid="confidence-chip"
                     className="pill"
@@ -67,6 +67,9 @@ export function Claims({
           })}
         </tbody>
       </table>
+      <p className="claims-note px-3 py-2.5 border-t border-[var(--color-border)]">
+        Click a claim to see it next to the page it came from.
+      </p>
     </div>
   );
 }

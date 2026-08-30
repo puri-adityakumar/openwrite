@@ -196,6 +196,24 @@ export async function decideGate(input: DecideInput): Promise<GateRow> {
   return rows[0]!;
 }
 
+// The upstream no longer has a pending approval for this gate (TrueForge
+// 422 "no pending approval for tool_call_id") — the run moved past it
+// without our row. Mark the row expired with the truthful reason so the
+// cockpit stops offering a decision that can never land, instead of
+// looping 502s on every retry.
+export async function markGateStale(gateId: string, reason: string, now: Date = new Date()): Promise<boolean> {
+  const { rowCount } = await query(
+    `UPDATE gates
+        SET status = 'expired',
+            decided_at = $1,
+            decided_reason = $2
+      WHERE id = $3
+        AND status = 'pending'`,
+    [now.toISOString(), reason, gateId],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
 // Mark all currently-pending gates whose expires_at has passed as
 // 'expired'. Returns the count of gates transitioned. Called by the
 // countdown tick (every 5 s) and once on the route handler.

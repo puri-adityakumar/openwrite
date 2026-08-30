@@ -9,6 +9,19 @@
    JetBrains Mono for numbers and code. No third voice on UI chrome. */
 @font-face { font-family: "system-fallback"; src: local("system-ui"); }
 
+/* Tailwind v4 font utilities. The design tokens below already exist in
+   :root as --font-* vars, but Tailwind only generates `font-*` utility
+   classes from its @theme namespace — without this block, class names
+   like `font-heading` and `font-body` silently resolve to nothing and
+   elements fall back to the body face. */
+@theme {
+  --font-heading: "Raleway", system-ui, sans-serif;
+  --font-body:    "Montserrat", system-ui, sans-serif;
+  --font-serif:   "Fraunces", Georgia, "Times New Roman", serif;
+  --font-num:     "JetBrains Mono", ui-monospace, monospace;
+  --font-mono:    ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
 /* Light tokens (default). */
 :root {
   color-scheme: light;
@@ -206,10 +219,16 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 600;
   margin: 0;
 }
-h1 { font-size: 2.5rem;  font-weight: 300; letter-spacing: -0.04em; }
-h2 { font-size: 2rem;    font-weight: 400; letter-spacing: -0.03em; }
-h3 { font-size: 1.5rem;  font-weight: 600; letter-spacing: -0.02em; } /* Montserrat 600 ≈ Raleway 700 */
-h4 { font-size: 1.25rem; font-weight: 500; letter-spacing: -0.015em; } /* Montserrat 500 ≈ Raleway 600 */
+/* Element-level heading sizes live in @layer base so Tailwind's layered
+   `text-*` utilities (and .rcp-display) can override them. Unlayered
+   element rules would beat every utility regardless of specificity —
+   the landing's clamp() type scale was silently losing to these. */
+@layer base {
+  h1 { font-size: 2.5rem;  font-weight: 300; letter-spacing: -0.04em; }
+  h2 { font-size: 2rem;    font-weight: 400; letter-spacing: -0.03em; }
+  h3 { font-size: 1.5rem;  font-weight: 600; letter-spacing: -0.02em; } /* Montserrat 600 ≈ Raleway 700 */
+  h4 { font-size: 1.25rem; font-weight: 500; letter-spacing: -0.015em; } /* Montserrat 500 ≈ Raleway 600 */
+}
 
 p { color: var(--color-muted-foreground); margin: 0; }
 
@@ -226,6 +245,50 @@ code, pre, kbd, samp { font-family: var(--font-num); }
 .navbar-link:hover {
   color: var(--accent-indigo);
   text-decoration: none;
+}
+
+/* Navbar icon button — 40px round, hairline border, quiet fill.
+   Used by GitHub, theme toggle, and logout in BrandHeader so the
+   right cluster reads as one uniform row. Round chrome against
+   angular content echoes the pill vocabulary (eyebrow, status
+   pills); hover promotes to ink + muted fill + 1px lift, active
+   presses 2% smaller — the same interaction grammar as .btn. */
+.navbar-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              background-color var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
+}
+.navbar-icon-btn:hover {
+  color: var(--color-foreground);
+  border-color: var(--color-foreground);
+  background: var(--color-muted);
+  transform: translateY(-1px);
+}
+.navbar-icon-btn:active {
+  transform: scale(0.98);
+  transition-duration: 0.05s;
+}
+.navbar-icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+/* The global focus ring defaults to radius-md; keep the ring round
+   on the pill so it follows the button's shape. */
+.navbar-icon-btn:focus-visible {
+  border-radius: var(--radius-full);
 }
 
 /* Focus ring — visible, 2px, ink color, 2px offset. The single source
@@ -296,6 +359,11 @@ main { animation: rcp-fade-in 0.3s var(--ease-out) both; }
   }
   .animate-fade-in, .animate-slide-in, main { animation-duration: 0.01ms; animation-iteration-count: 1; }
   .pill[data-state="running"] { animation: none; }
+  /* The component transition shorthand (class specificity) beats the
+     :where() duration override above, so collapse the icon pill's
+     hover/active motion explicitly. */
+  .navbar-icon-btn { transform: none; transition-duration: 0.01ms; }
+  .navbar-icon-btn:hover, .navbar-icon-btn:active { transform: none; }
 }
 /* Light on dark needs compensation — Raleway 300 reads optically
    thinner on dark surfaces. Widen the letter-spacing and bump the
@@ -647,6 +715,131 @@ main { animation: rcp-fade-in 0.3s var(--ease-out) both; }
   font-size: 0.8125rem;
   color: var(--color-muted-foreground);
   line-height: 1.5;
+}
+.empty-step-track {
+  display: flex;
+  gap: 0.375rem;
+  margin-top: 0.75rem;
+}
+
+/* ============================================================
+   Dashboard run cards — "your runs" surface
+   The waiting-on-you accent is the page's job: runs paused at
+   Verify get an indigo left bar + soft wash so "needs a human"
+   reads at a glance, and they sort to the front. Indigo here is
+   the same reserved use as Verify elsewhere — no body text in it.
+   ============================================================ */
+.dash-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+.dash-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--color-foreground);
+}
+.dash-card-waiting {
+  border-left: 3px solid var(--accent-indigo);
+}
+.dash-card-waiting .dash-track { animation: dash-track-in 400ms var(--ease-out); }
+
+/* Pipeline track — five dots, filled through the current stage.
+   The current dot is ink when the run is moving, indigo when it's
+   paused at Verify. Verify is the only dot that pulses (the one
+   place the design system allows a loop). */
+.dash-track {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.dash-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+  flex: none;
+}
+.dash-dot-done {
+  background: var(--color-foreground);
+}
+.dash-dot-cur {
+  background: var(--color-muted-foreground);
+}
+.dash-dot-verify {
+  background: var(--accent-indigo);
+  animation: dash-verify-pulse 1600ms var(--ease-out) infinite;
+}
+@keyframes dash-verify-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+@keyframes dash-track-in {
+  from { opacity: 0; transform: translateX(-4px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Filter chips — pill vocabulary from the rest of the app, with a
+   count badge on Waiting on you so the pending number survives
+   sorting. Active chip inverts to ink. */
+.dash-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.3125rem 0.75rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-muted-foreground);
+  font-family: var(--font-heading);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              background-color var(--dur-fast) var(--ease-out);
+}
+.dash-filter:hover {
+  color: var(--color-foreground);
+  border-color: var(--color-foreground);
+}
+.dash-filter-active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-primary-foreground);
+}
+.dash-filter-active:hover {
+  color: var(--color-primary-foreground);
+  border-color: var(--color-primary);
+}
+.dash-filter-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.125rem;
+  height: 1.125rem;
+  padding: 0 0.3125rem;
+  border-radius: var(--radius-full);
+  background: var(--accent-indigo-soft);
+  color: var(--accent-indigo);
+  font-family: var(--font-num);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+.dash-filter-active .dash-filter-count {
+  background: var(--accent-indigo);
+  color: var(--color-primary-foreground);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dash-card { transform: none; transition: none; }
+  .dash-card:hover { transform: none; }
+  .dash-card-waiting .dash-track,
+  .dash-dot-verify { animation: none; }
 }
 
 /* ============================================================

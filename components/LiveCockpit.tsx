@@ -37,12 +37,11 @@ export function LiveCockpit({
       coverage={state.coverage}
       liveState={state}
       summary={{
-        // The live run has no structured summary until Phase 4 wires the
-        // extract step. Until then we render a placeholder so the Summary
-        // tab is not blank.
+        // The live run has no structured summary until the extract step
+        // completes; render an honest placeholder so the tab is not blank.
         title,
-        abstract: "The live run has not yet produced an abstract. Check back when the extract step completes (Phase 4).",
-        tldr: "Awaiting live extract…",
+        abstract: "The agent hasn't written the summary yet. It appears here as soon as the extract step finishes.",
+        tldr: "First line of the summary lands here once the agent has read the paper.",
         claims_count: 0,
         evidence_count: 0,
       }}

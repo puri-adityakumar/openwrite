@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 import { EnvBannerHost } from "../components/EnvBannerHost";
 import { BrandHeader } from "../components/BrandHeader";
+import { getCurrentUser } from "../lib/session";
 
 export const metadata = {
   title: "Openwrite — Drop a paper. Watch an agent dissect it for you.",
@@ -24,7 +25,8 @@ const themeBootstrap = `
 })();
 `;
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const user = await getCurrentUser();
   return (
     // suppressHydrationWarning: the inline themeBootstrap script sets
     // data-theme and colorScheme on <html> before React hydrates so the
@@ -43,8 +45,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       </head>
       <body>
         <EnvBannerHost />
-        <BrandHeader />
-        <main>{children}</main>
+        <BrandHeader signedInEmail={user?.email ?? null} />
+        <main className="pt-6 md:pt-10">{children}</main>
       </body>
     </html>
   );

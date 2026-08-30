@@ -1,190 +1,189 @@
-# Recap — a research-paper autopsy you can drive
+# Openwrite — an agent that asks permission before it touches anything
 
-> One command, three verbs, six surfaces, zero surprises.
-> Built for the WeMakeDevs × TrueFoundry Agent Harness Hackathon (Savile Row track).
+> Drop a research paper. Watch an agent dissect it — and stop at every irreversible step to ask you first.
 
-Recap takes a research paper — arXiv URL or uploaded PDF — and drives a
-TrueForge-backed agent that dissects it into a live Trail, a Coverage grid,
-a Claims↔Evidence table, an Authors tab, and a downloadable Audit. Three
-approval gates (Verify, Publish, Save) pause the agent before anything
-irreversible; the Verify gate forces the user to type the repo owner and
-hold for three seconds before the paper's untrusted code runs in a Daytona
-sandbox. First paint is a populated demo run, not an empty state.
+Openwrite (working title *Recap*) is a research-paper autopsy you can drive. Hand it an arXiv URL or a PDF and a TrueForge-backed agent reads the paper, maps its structure, extracts claims with page-level evidence, profiles the authors, and streams everything into a live cockpit. Three approval gates — **Verify**, **Publish**, **Save** — pause the agent before anything irreversible: the Verify gate even makes you type the repo owner and hold a button for three seconds before the paper's untrusted code can run in a sandbox.
 
-Full product spec: [docs/product.md](docs/product.md).
-Full architecture: [docs/architecture.md](docs/architecture.md).
-Security model: [SECURITY.md](SECURITY.md). What is real vs previewed
-today: [TECHNICAL.md](TECHNICAL.md). New here? The **ⓘ How it works**
-button on the dashboard walks the seven surfaces with screenshots.
+Built for the WeMakeDevs × TrueFoundry Agent Harness Hackathon (Savile Row track). Everything runs locally — no cloud, no signups, no hidden keys.
+
+## Watch it
+
+[![Openwrite demo — 3 minutes](https://img.youtube.com/vi/9iPQsysZ35k/0.jpg)](https://youtu.be/9iPQsysZ35k)
+
+📺 **3-minute demo:** [youtu.be/9iPQsysZ35k](https://youtu.be/9iPQsysZ35k)
+
+📝 **Write-up:** [I built an agent that asks permission before it touches anything](https://dev.to/adityawaslost/i-built-an-agent-that-asks-permission-before-it-touches-anything-299c) — the story behind the gates, the surfaces, and why "a pause you have to hold open is control."
+
+## Features
+
+- **One command to run** — `bash scripts/setup.sh` brings up Postgres + Redis, applies schema + seed, and starts the app.
+- **Live cockpit** — the agent's progress streams over SSE: a trail of pipeline stages, a per-page coverage grid, a claims ↔ evidence table, author profiles, and a replayable audit.
+- **Permission before action** — every irreversible step pauses behind a gate. The Verify gate is deliberately friction-full: type the repo owner, hold three seconds, then (and only then) does untrusted paper code touch a sandbox.
+- **First paint is a real run** — a seeded demo paper renders a complete cockpit on first load, so you see the product, not an empty state.
+- **100% local** — Docker Compose brings up Postgres, Redis, and the TrueForge harness. No external services required.
+- **Auth built in** — local JWT + bcrypt, signup/login out of the box, demo login on the landing page.
 
 ## Quickstart
+
+Prerequisites: [Node.js](https://nodejs.org) 20+ and [Docker](https://www.docker.com/products/docker-desktop/).
 
 ```bash
 git clone https://github.com/puri-adityakumar/openwrite.git
 cd openwrite
-cp .env.example .env       # then fill in keys
-npm install
-docker compose up          # the only setup command beyond install
+bash scripts/setup.sh
 ```
 
-`docker compose up` brings up Postgres, Redis, and the `recap-db-init`
-sidecar that applies `schema.sql` + `seed.sql`. The cockpit first paint
-renders from `seed_audits` against this stack — no external services,
-no sibling checkouts, no other setup steps. This satisfies the project's
-[standing 100%-local constraint](docs/README.md).
+That's it. The script checks prerequisites, copies `.env.example` to `.env`, installs dependencies, brings up Postgres + Redis via `docker compose up`, applies `schema.sql` + `seed.sql`, and starts the dev server. If you'd rather run the steps yourself: after `npm install`, `docker compose up` is the only setup command beyond install.
 
-### Opt-in: bring up the TrueForge server too
+Open **http://localhost:13000** and sign in with the demo account:
 
-The TrueForge `server` service is gated behind the `trueforge` Compose
-profile. A default `docker compose up` does **not** build or start it,
-because the build context (`${TF_SOURCE_DIR:-../trueforge}`) lives
-outside this repository and is not part of the demo path. To exercise
-the live audit path, clone TrueForge as a sibling repo and bring the
-server up explicitly:
+```
+demo@local / demo1234
+```
+
+### Manual setup (same steps, spelled out)
+
+```bash
+npm install
+cp .env.example .env        # defaults work for local dev
+docker compose up -d        # Postgres (5433) + Redis (6380) + schema/seed sidecar
+npm run dev                 # http://localhost:13000
+```
+
+To bring up the full TrueForge server too (needed for the live agent path — the seeded demo path works without it):
 
 ```bash
 git clone https://github.com/truefoundry/trueforge.git ../trueforge
 docker compose --profile trueforge up
 ```
 
-See [docker-compose.trueforge.yml](docker-compose.trueforge.yml) for the
-port mapping (server on host 8791 → container 8790, Postgres on 5433,
-Redis on 6380).
+### Environment keys
 
-After `npm install`, the only setup command is `docker compose up` (see the
-100% local standing constraint in [docs/README.md](docs/README.md)). When
-the containers are up, open http://localhost:13000.
+`cp .env.example .env` gives you working defaults for local dev. The optional keys:
 
-### Real TrueForge + GMI path (live LLM)
+| Variable | Needed for | Default |
+|---|---|---|
+| `DATABASE_URL` | Postgres connection | `postgres://trueforge:trueforge@localhost:5433/recap` |
+| `REDIS_URL` | Rate limiting | `redis://localhost:6380` |
+| `JWT_SECRET` | Auth sessions | `change-me-to-a-long-random-string` |
+| `TRUEFORGE_BASE_URL` | Live agent harness | `http://localhost:18790` |
+| `GMI_API_KEY` / `GMI_MODEL` | Live LLM provider (Anthropic `/v1/messages` format via GMI Cloud) | — |
+| `DAYTONA_API_KEY` | Ephemeral sandboxes | — |
+| `GITHUB_TOKEN` | Optional: GitHub MCP for the agent | — |
 
-For the demo and for the WeMakeDevs × TrueFoundry submission, Recap
-talks to a real TrueForge harness (live-only). The
-quickest path is `npx` standalone:
+The in-app `.env` banner walks you through any missing keys at runtime.
+
+## Architecture
+
+```
+┌──────────────┐   SSE / HTTP    ┌────────────────────┐   tool calls    ┌──────────────────────┐
+│   Browser    │ ───────────────►│  Next.js app       │ ───────────────►│  TrueForge server    │
+│   :13000     │ ◄───────────────│  (this repo)       │ ◄───────────────│  :18790 (docker)     │
+│  cockpit UI  │  events, gates  │  /api/* routes     │   approvals      │  agent loop, gates,  │
+└──────┬───────┘                 └────┬───────────────┘                  │  replay, sandbox     │
+       │                             │                                   └──────────┬───────────┘
+       │   Postgres (5433)           │                                                │ HTTPS
+       │   users, papers, audit,     │                                                ▼
+       │   gates, seed_audits        │                                    ┌──────────────────────┐
+       └─────────────────────────────┘                                    │  LLM providers       │
+       Redis (6380) — rate limits    ◄───────────────────────────────────┤  GMI / MiniMax M3    │
+                                                                          └──────────────────────┘
+```
+
+```mermaid
+flowchart LR
+    B[Browser<br/>localhost:13000] -->|SSE events / gate decisions| N[Next.js app<br/>cockpit + API routes]
+    N -->|createTurnStream / respondToApproval| T[TrueForge server<br/>localhost:18790]
+    T -->|tool execution| S[Daytona sandbox<br/>untrusted paper code]
+    T -->|model calls| G[GMI Cloud<br/>MiniMax M3]
+    N -->|pg| P[(Postgres<br/>users · papers · gates · audit · seed_audits)]
+    N -->|redis| R[(Redis<br/>rate limiting)]
+    P -->|schema.sql + seed.sql<br/>recap-db-init sidecar| C[(docker compose)]
+```
+
+- **Frontend** — Next.js (App Router) + React 19 + Tailwind v4 on `:13000`. The cockpit renders the agent's live run: trail, coverage grid, claims table, authors, audit.
+- **Agent harness** — TrueForge in Docker (`:18790`). It runs the agent loop, streams events over SSE, pauses for approvals, and handles replay/persistence.
+- **Storage** — Postgres on `:5433` (same container family as TrueForge) with a `recap-db-init` sidecar that applies `schema.sql` + `seed.sql` idempotently. Redis on `:6380`.
+- **Sandbox** — Daytona, ephemeral per turn, with an egress allowlist (arXiv + the paper's repo + PyPI). A local sandbox fallback engages when no sandbox provider is configured.
+- **LLM** — GMI Cloud as a custom Anthropic-format provider (`MiniMaxAI/MiniMax-M3`), BYO key.
+
+## API
+
+All routes live under `/api`, scoped to the signed-in user.
+
+| Method | Route | Purpose |
+|---|---|---|
+| `POST` | `/api/auth/signup` | Create account (bcrypt → `users`) |
+| `POST` | `/api/auth/login` | Sign in → JWT cookie |
+| `POST` | `/api/auth/logout` | Clear session |
+| `GET` | `/api/env-status` | Which env keys are configured (powers the banner) |
+| `GET` / `POST` | `/api/papers` | List / create papers |
+| `GET` | `/api/papers/:id/pdf` | Served source PDF |
+| `GET` | `/api/papers/:id/authors` | OpenAlex author profiles |
+| `GET` | `/api/papers/:id/claims` | Extracted claims + evidence |
+| `GET` | `/api/papers/:id/gates` | Approval gates for a paper |
+| `GET` | `/api/papers/:id/audit` | Audit trail events |
+| `POST` | `/api/papers/:id/ask` | Ask the paper a question (cited answers) |
+| `POST` | `/api/agent/start` | Start a run → TrueForge session + first turn |
+| `POST` | `/api/agent/approve` | Resume a paused turn (approve a gate) |
+| `POST` | `/api/agent/halt` | Pause / stop the run |
+| `GET` / `POST` | `/api/agent/replay` | Replay a run in a fresh sandbox |
+| `POST` | `/api/agent/stream` | SSE stream of live run events |
+| `GET` | `/api/agent/gates/:id` | Gate detail + status |
+
+### The approval flow
+
+1. The agent hits an irreversible action → TrueForge emits `tool.approval_required`.
+2. Openwrite persists the gate and shows the countdown card in the cockpit.
+3. The user approves/denies → `respondToApproval` resumes the turn on the same `threadId`.
+4. `turn.done` with pending `requiredActions` is **paused on gate**, never "done".
+
+## Project structure
+
+```
+app/                Next.js App Router — pages + API routes
+components/         Cockpit, gates, tabs (summary/claims/authors/graphs), landing
+lib/                DB, session, event reducer, TrueForge + OpenAlex clients
+scripts/            setup.sh, smoke checks, demo recorder
+tests/              Vitest unit suite (232 tests)
+e2e/                Playwright end-to-end specs
+docs/               Product spec, architecture, approval-gate spec, handovers
+schema.sql          Single source of truth for the DB schema
+seed.sql            Demo user + seeded first-paint run
+docker-compose.yml  Postgres + Redis + schema/seed init sidecar
+```
+
+## Testing
 
 ```bash
-# 1. start TrueForge (one command, no clone) — compose path is 18790,
-#    standalone npx defaults to 8790
-npx --yes @truefoundry/trueforge@latest &
-# wait for "Agent server listening on http://localhost:8790" (standalone)
-# or http://localhost:18790 when using `docker compose up`
-
-# 2. register GMI as the Anthropic provider (custom base_url)
-curl -X POST ${TRUEFORGE_BASE_URL:-http://localhost:18790}/api/v1/settings/model-providers \
-  -H "content-type: application/json" \
-  -d '{"manifest":{
-        "type":"anthropic",
-        "base_url":"https://api.gmi-serving.com/v1",
-        "auth":{"api_key":"'$GMI_API_KEY'"},
-        "models":[{"model_id":"MiniMaxAI/MiniMax-M3","name":"gmi-minimax",
-                   "properties":{"context_length":200000,"max_output_tokens":8192}}]}}'
-
-# 3. set TRUEFORGE_BASE_URL in .env and restart the app
-echo "TRUEFORGE_BASE_URL=http://localhost:18790" >> .env  # standalone: 8790
-npm run build && npm run start
+npm test          # Vitest unit suite (includes DB-backed tests)
+npm run parity    # seed-vs-live schema drift guard
+npx tsc --noEmit  # typecheck
+npx playwright test  # E2E suite (needs the dev server running)
 ```
 
-**Sandbox model:** TrueForge ships Daytona as the only catalogued sandbox
-provider, but a **local sandbox fallback** auto-engages when the harness
-is in standalone mode and no `sandbox_provider` row is persisted
-(see `LocalSandboxProvider` in upstream `trueforge/src/sandbox/local/`).
-For the hackathon submission, Recap runs with `config.sandbox.enabled:
-false` on the agent spec — the live GMI model still streams real
-`turn.created` / `model.message.delta` / `tool.approval_required` /
-`turn.done` events, the gate cards surface the approval pause, and the
-allow/deny routes back to TrueForge as a real resume. Tool *execution*
-behind the gate is skipped (no Daytona snapshot-write permission in the
-submitted key); the harness surfaces this as `sandbox.disabled` in the
-audit. Full smoke validation: `bash scripts/smoke-http.sh`.
+CI runs typecheck, the unit suite, and the parity guard on every PR (Postgres provisioned via a GitHub Actions service).
 
-### What we verify works (real, not faked)
+## Docs
 
-```
-$ bash scripts/smoke-http.sh
-[smoke-http] TrueForge health              OK
-[smoke-http] GMI provider configured       OK (anthropic, gmi-minimax, base_url ok)
-[smoke-http] No Daytona sandbox provider   404 (local fallback engaged)
-[smoke-http] Create test session           201 (sid=01m17rrtn172w7r99zqpj42e92)
-[smoke-http] Create turn (user.message)    200 (tid=01m17rrtnxeemczrfy76rs0vp1.local)
-[smoke-http] Subscribe SSE 25s
-  data: {"type":"turn.created","turn_id":"...","state":{"status":"running"},...}
-  data: {"type":"model.message","thread_id":"main",...}
-  data: {"content":"pong","type":"model.message.delta",...}
-  data: {"type":"model.message.delta","finish_reason":"stop",...}
-  data: {"type":"turn.done","state":{"status":"done","metrics":{"total_tokens":1538}},...}
-[smoke-http] Cancel session                200
-[smoke-http] OK
-```
+- [Product spec](docs/product.md) — identity, vocabulary, rubric
+- [Architecture](docs/architecture.md) — stack, diagram, routes, DB schema, SSE flow
+- [Approval gates](docs/approval-gates.md) — Verify / Publish / Save spec
+- [Security model](SECURITY.md) — threat model and sandboxing
+- [TECHNICAL.md](TECHNICAL.md) — what is real vs previewed
 
-The "pong" string is a real LLM response from `MiniMaxAI/MiniMax-M3` via
-GMI Cloud — not a fixture.
+## Tech stack
 
-The demo credentials on the landing page are visible by default
-(`demo@local / demo1234`) so a tired judge is one click from the cockpit.
-
-### Environment keys (power-user path)
-
-The in-app banner walks you through any missing keys at runtime (with a
-copyable one-liner). If you prefer the terminal,
-`npx tsx cli/init-key.ts DAYTONA_API_KEY=… GMI_API_KEY=…` upserts keys
-into `.env` — seeding it from `.env.example` when it doesn't exist yet.
+Next.js 16 · React 19 · Tailwind v4 · TypeScript · Postgres · Redis · TrueForge agent harness · Daytona sandbox · GMI Cloud (Anthropic-format) · OpenAlex / arXiv data · Vitest + Playwright + GitHub Actions.
 
 ## Qodo Code Review Evidence
 
-Every substantive change lands through a pull request reviewed by the Qodo
-GitHub App before merge. The full Qodo review policy and the install URL
-are in [QODO_REVIEW.md](QODO_REVIEW.md).
-
-**Phase 7 — real wire-up (merged):** [#14 — feat(phase-7): wire app to real
-TrueForge + GMI (Qodo-reviewed)](https://github.com/puri-adityakumar/openwrite/pull/14),
-squash-merged as `9d70f70`. Qodo posted "Great, no issues found!" after
-reviewing the HttpTrueForgeClient, the stream route's gate-insert fix,
-the smoke scripts, and the demo-recording driver.
-
-**First PR (merged):** [#1 — chore(deps): install tsx so parity and demo
-scripts resolve to a real
-binary](https://github.com/puri-adityakumar/openwrite/pull/1), squash-merged
-as `e7f39e0`. Qodo posted a `COMMENTED` review with **1 bug finding** about
-the install-trigger wording in `QODO_REVIEW.md` and `README.md` (the docs
-claimed App install alone would trigger the review; it doesn't — the
-correct triggers are PR open / reopen / ready-for-review, or the
-`/agentic_review` comment fallback). The fix is in commit `0b936bd` on the
-same branch and the re-review marked the bug ✓ Resolved. The branch
-`chore/install-tsx` was deleted on merge.
-
-**Representative substantive review (merged):** [#11 — feat(phase-4):
-approval gates + phase-5 control
-surfaces](https://github.com/puri-adityakumar/openwrite/pull/11). Qodo
-returned **17 findings across two review passes**; every one was triaged
-in-thread — 9 fixed test-first (atomic approval-TTL guard, deny-on-expiry
-with paper bookkeeping, pause-suspends-stream registry, retryable stop,
-cap-event dedupe, replay gate supersession, expired-publish lock, hold
-cancellation at TTL 0, empty-tool-call-id guard), the stale-vs-HEAD ones
-answered with the closing commit and test, and the remaining deferrals
-documented. The PR merged only after the full suite went green
-(226/226 unit, 54/54 E2E). This fix-then-merge loop is the project norm:
-PRs #3–#10 followed the same Qodo-review gate.
-
-**Phase 0 bootstrap:** the four initial commits on `main` (`a203040`,
-`1ed94ba`, `173ceda`, `a734b64`) were pushed directly to establish the
-repo, per the phase plan's install-steps-noted fallback
-(`docs/plan/phase-0-decisions-and-scaffold.md` sub-phase 0.2 verification).
-All subsequent code lands through Qodo-reviewed PRs.
-
-## AI use disclosure
-
-Recap is a hackathon project built with substantial AI assistance:
-
-- The documentation in [docs/](docs/) was drafted and cross-checked by an
-  agent loop (see [docs/research/iteration-log.md](docs/research/iteration-log.md)).
-- Source code is written by an Orchestrator agent with specialist subagents
-  under a strict TDD loop, as defined in
-  [docs/plan/README.md](docs/plan/README.md).
-- The project is open source so judges can read every decision.
-
-Per the hackathon rules, all participants understand and can explain every
-line of code in their submission.
+Every substantive change lands through a pull request reviewed by the Qodo GitHub App before merge. The full Qodo review policy and the install URL are in [QODO_REVIEW.md](QODO_REVIEW.md). Notable reviews: [#14 — feat(phase-7): wire app to real TrueForge + GMI](https://github.com/puri-adityakumar/openwrite/pull/14) (Qodo: "Great, no issues found!") and [#11 — approval gates + phase-5 control surfaces](https://github.com/puri-adityakumar/openwrite/pull/11) (17 findings, all triaged, 9 fixed test-first).
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Third-party notices in
-[LICENSES.thirdparty.txt](LICENSES.thirdparty.txt).
+MIT — see [LICENSE](LICENSE). Third-party notices in [LICENSES.thirdparty.txt](LICENSES.thirdparty.txt).
+
+---
+
+Made for the WeMakeDevs × TrueFoundry Agent Harness Hackathon. Open source so judges (and you) can read every decision.

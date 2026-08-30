@@ -259,6 +259,44 @@ describe("applyApproval — reliability (Qodo #1, #2)", () => {
     expect(after.status).toBe("pending");
   });
 
+  it("stale approval: a TrueForge 422 'no pending approval' expires the gate + 409s instead of looping 502s", async () => {
+    // The stuck state this guards against: our gate row says 'pending'
+    // but TrueForge already moved past the approval, so every retry
+    // used to fail with `approval failed: TrueForge 422 ...` forever.
+    class StaleTF extends FakeTF {
+      async resumeTurnWithApproval() {
+        throw new Error(
+          'TrueForge 422 Unprocessable Entity: {"error":{"message":"thread main: messages[0] no pending approval for tool_call_id \'call_01a0539937f07701842cb6da\'"}}',
+        );
+      }
+    }
+    const fake = new StaleTF();
+    __setTrueForgeClientForTest(fake);
+    const tc = fresh("stale1");
+    const gate: GateRow = await insertGate({
+      paperId: PAPER_ID,
+      threadId: "thr_rel_stale",
+      toolCallId: tc,
+      toolName: "bash",
+      kind: "verify",
+      severity: "irreversible",
+    });
+    const { applyApproval } = await import("../app/api/agent/approve/route");
+    const { ConflictError } = await import("../lib/gates");
+    const thrown = await applyApproval({
+      gate,
+      sessionId: "sess_rel_stale",
+      decision: "allow",
+    }).catch((e: unknown) => e);
+    expect(thrown).toBeInstanceOf(ConflictError);
+    expect((thrown as Error).message).toMatch(/no longer pending/i);
+    // The row must NOT stay pending — it is expired with the truthful
+    // reason, so the cockpit's next poll stops offering the decision.
+    const after = await getGateById(gate.id);
+    expect(after.status).toBe("expired");
+    expect(after.decided_reason).toMatch(/no longer pending upstream/);
+  });
+
   it("Qodo #2: refuses to decide a gate whose TTL has already passed", async () => {
     const fake = new FakeTF();
     __setTrueForgeClientForTest(fake);

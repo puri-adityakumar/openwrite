@@ -1,18 +1,18 @@
 /* ============================================================
    Signup-only additions — extend globals.css. Editorial tone.
-   Section-scoped: imported once by components/signup/FeaturesPanel.tsx.
+   Section-scoped: imported once by components/signup/AuthCard.tsx.
 
    Token references (see app/globals.css):
      --color-foreground      ink (cool near-black, white in dark)
      --accent-indigo         signup-specific accent (Verify fill, focus ring,
-                             hold-progress bar, card hover shadow)
+                             hold-progress bar, hairline pulse)
      --accent-indigo-soft    hover shadow at 10%/18% alpha
      --ease-out              cubic-bezier(0.16, 1, 0.3, 1)
 
    Design constraints honored:
      - No new dependencies, no hex colors, no third typeface.
      - Indigo uses reserved: Verify node, input focus ring, hold-progress,
-       card hover shadow. No body text uses indigo.
+       hairline pulse. No body text uses indigo.
      - All infinite motion respects prefers-reduced-motion.
    ============================================================ */
 
@@ -34,6 +34,23 @@
   to { stroke-dashoffset: 0; }
 }
 
+/* Trail stations rise in as the drawn connector reaches them. */
+.signup-trail-node {
+  opacity: 0;
+  transform: translateY(6px);
+  transform-box: fill-box;
+  animation: rcp-trail-node-in 500ms var(--ease-out) forwards;
+}
+.signup-trail-node.n-1 { animation-delay: 0ms; }
+.signup-trail-node.n-2 { animation-delay: 150ms; }
+.signup-trail-node.n-3 { animation-delay: 300ms; }
+.signup-trail-node.n-4 { animation-delay: 450ms; }
+.signup-trail-node.n-5 { animation-delay: 600ms; }
+.signup-trail-node.n-6 { animation-delay: 750ms; }
+@keyframes rcp-trail-node-in {
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* Approval hold-progress bar — 0% to 100% width over 3s, infinite. */
 .signup-hold-progress {
   fill: var(--accent-indigo);
@@ -48,27 +65,58 @@
 }
 
 /* Indigo input focus ring — overrides the default `:focus-visible` outline
-   for inputs in the signup card so the field underlines itself in indigo. */
+   for inputs in the auth pane so the field underlines itself in indigo. */
 .signup-card-input:focus-visible {
   outline: none;
   border-color: var(--accent-indigo);
   box-shadow: 0 1px 0 0 var(--accent-indigo);
 }
 
-/* Signup card lift on hover. Subtle, 1px translate-y + softer shadow. */
-.signup-card-hoverable {
-  transition: transform 600ms var(--ease-out), box-shadow 600ms var(--ease-out);
-  will-change: transform;
+/* Auth pane hairline — vertical 1px rule on the left edge of the
+   sticky right column. Resting state is the page ink at low alpha;
+   on mount, one indigo pulse fades in and back out over 1.6s, the
+   same duration as the page signature. No hover, no infinite loop. */
+.auth-pane-rule {
+  background: var(--color-foreground);
+  opacity: 0.18;
 }
-.signup-card-hoverable:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 24px -8px var(--accent-indigo-soft);
+@keyframes rcp-auth-rule-pulse {
+  0%   { opacity: 0; background: var(--accent-indigo); }
+  35%  { opacity: 1; background: var(--accent-indigo); }
+  100% { opacity: 0.18; background: var(--color-foreground); }
+}
+.auth-pane-rule {
+  animation: rcp-auth-rule-pulse 1600ms var(--ease-out) 1;
+}
+
+/* Scroll reveal — moved here from landing/landing.css (which is
+   deleted with the landing page). <Reveal> is still used by
+   FeaturesPanel; the base hidden state, the rise-on-reveal, and
+   the reduced-motion collapse must live wherever Reveal's CSS
+   is registered. */
+.reveal {
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity var(--dur-reveal) var(--ease-out),
+    transform var(--dur-reveal) var(--ease-out);
+  will-change: opacity, transform;
+}
+.reveal.is-revealed {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 /* Reduced-motion: collapse all signup animations. */
 @media (prefers-reduced-motion: reduce) {
   .signup-trail-connector { stroke-dashoffset: 0 !important; animation: none !important; }
-  .signup-hold-progress   { transform: scaleX(1); animation: none; }
-  .signup-card-hoverable,
-  .signup-card-hoverable:hover { transform: none; box-shadow: none; }
+  .signup-trail-node       { animation: none !important; opacity: 1; transform: none; }
+  .signup-hold-progress   { transform: scaleX(1); transform-origin: 0% 50%; animation: none; }
+  .auth-pane-rule         { animation: none; opacity: 0.18; background: var(--color-foreground); }
+  .reveal,
+  .reveal.is-revealed {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
 }

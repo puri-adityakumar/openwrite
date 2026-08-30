@@ -13,6 +13,9 @@
 //   403 paper does not belong to the caller
 //   404 gate not found
 //   409 gate already decided (replay)
+//   409 gate no longer pending upstream (TrueForge 422 — the stale row
+//      is expired server-side so the cockpit refreshes instead of
+//      retrying a decision that can never land)
 
 import { NextResponse, type NextRequest } from "next/server";
 import { query } from "../../../../lib/db";
@@ -21,6 +24,7 @@ import {
   decideGate,
   getGateById,
   expireGateRow,
+  markGateStale,
   ConflictError,
   NotFoundError,
   type GateRow,
@@ -81,7 +85,22 @@ export async function applyApproval(input: {
     decision: input.decision,
   };
   if (input.reason !== undefined) resumeInput.reason = input.reason;
-  const { turnId } = await client.resumeTurnWithApproval(resumeInput);
+  let turnId: string;
+  try {
+    ({ turnId } = await client.resumeTurnWithApproval(resumeInput));
+  } catch (e) {
+    // Stale-approval self-healing: TrueForge answers 422 "no pending
+    // approval for tool_call_id" when the run already consumed/moved
+    // past the approval but our gate row stayed 'pending'. Retrying can
+    // never succeed — it used to loop 502s forever. Mark the row
+    // expired with the truthful reason and surface a 409 so the
+    // cockpit refreshes instead of retrying.
+    if (/no pending approval/i.test((e as Error).message)) {
+      await markGateStale(input.gate.id, "no longer pending upstream").catch(() => {});
+      throw new ConflictError("approval no longer pending upstream — the run already moved past it");
+    }
+    throw e;
+  }
 
   // Only NOW commit the decision. If the DB write fails after the
   // resume, the cockpit's next reload sees the resumed turn (we
