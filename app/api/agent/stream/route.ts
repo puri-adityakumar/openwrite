@@ -293,11 +293,13 @@ export async function buildStream(input: {
         // but every entry lacks threadId/toolCallId, persisting no gate and
         // then marking paused leaves the run permanently stuck with no
         // Allow/Deny path. Detect the stranded case BEFORE the reducer sees
-        // the event, replace the payload with a filtered list so the reducer
-        // cannot pause on unpersistable gates, and surface a recoverable
-        // turn.error instead.
+        // the event. Keep the original event immutable for audit (so the
+        // malformed action stays in the durable trail), and feed a cloned
+        // filtered payload to the reducer/gate loop so it cannot pause on
+        // unpersistable gates. Surface a recoverable turn.error instead.
         let turnDoneStranded = false;
         let turnDoneFiltered: Array<Record<string, unknown>> | null = null;
+        let eventForReduce: LiveEvent = event;
         if (event.type === "turn.done") {
           const raw = (event.payload.requiredActions as Array<Record<string, unknown>> | undefined) ?? [];
           if (raw.length > 0) {
@@ -318,8 +320,6 @@ export async function buildStream(input: {
               );
               return Boolean(tid && tcid);
             });
-            // Only approval/response gates matter for the stranded check;
-            // if at least one gate existed and none survived filtering, we are stranded.
             const rawGateCount = raw.filter(
               (a) => a?.type === "tool.approval_required" || a?.type === "tool.response_required",
             ).length;
@@ -329,14 +329,8 @@ export async function buildStream(input: {
             if (rawGateCount > 0 && filteredGateCount === 0) {
               turnDoneStranded = true;
               turnDoneFiltered = filtered;
-              // Replace the payload so the reducer sees no persistable gate
-              // and will NOT set status=paused (it will fall through to done/error).
-              (event.payload as Record<string, unknown>).requiredActions = filtered;
             } else if (filtered.length !== raw.length) {
-              // Some entries were invalid — keep only the valid ones so the
-              // reducer and later insert loop cannot pause on an unpersistable gate.
               turnDoneFiltered = filtered;
-              (event.payload as Record<string, unknown>).requiredActions = filtered;
               for (const act of raw) {
                 if (!filtered.includes(act)) {
                   const tid = String((act as Record<string, unknown>).threadId ?? (act as Record<string, unknown>).thread_id ?? "");
@@ -358,17 +352,26 @@ export async function buildStream(input: {
                 }
               }
             }
+            if (turnDoneFiltered !== null) {
+              // Clone for reducer/gate loop; keep original `event` for audit.
+              eventForReduce = {
+                ...event,
+                payload: { ...event.payload, requiredActions: turnDoneFiltered },
+              } as LiveEvent;
+            }
           }
         }
 
         const roles = threadMap.snapshot();
-        const next = reduce(state, event, { roles });
+        const next = reduce(state, eventForReduce, { roles });
         state = next;
         const eventWithRoles: LiveEvent & { _roles?: Record<string, string> } = {
-          ...event,
+          ...eventForReduce,
           _roles: Object.fromEntries(roles),
         };
         try {
+          // Audit the ORIGINAL wire event so malformed requiredActions remain
+          // reconstructible after logs expire (Qodo observability).
           await appendAudit(paperId, event);
         } catch (e) {
           if (e instanceof AuditWriteError) {
@@ -383,23 +386,46 @@ export async function buildStream(input: {
         sendPreamble();
         startHeartbeat();
         safeEnqueue(sseLine("event", eventWithRoles));
-        // Stranded gate: surface as turn.error and flip paper to error so
-        // the cockpit never renders a paused run with no Allow/Deny buttons.
+        // Stranded gate: surface as turn.error but honor cap hard-stop first.
+        // The cap check uses terminal metrics; a cap-exceeded paper must be
+        // locked with halt_reason='cap' not overwritten as plain error.
         if (turnDoneStranded) {
+          const m = (event.payload.metrics as { totalTokens?: number; totalCostInUsd?: number } | undefined) ?? {};
+          try {
+            const stopped = await enforceCap(paperId, {
+              totalTokens: m.totalTokens ?? 0,
+              totalCostInUsd: m.totalCostInUsd ?? 0,
+            });
+            if (stopped) {
+              safeEnqueue(sseLine("cap.exceeded", { totalTokens: m.totalTokens ?? 0 }));
+              // Cap lock took precedence — close as error terminal but do NOT
+              // overwrite the halted status (enforceCap already set halted=true).
+              safeEnqueue(sseLine("turn.error", { message: "cap exceeded", state: "error" }));
+              return { terminal: true, next };
+            }
+          } catch (e) {
+            console.error("[stream] stranded cap check failed:", (e as Error).message);
+          }
           const detail = "turn.done carried requiredActions but no gate had a persistable threadId/toolCallId";
           console.error(`[stream] ${detail} — surfacing turn.error`);
           safeEnqueue(sseLine("turn.error", { message: detail }));
+          // Persist an explicit audit row for the synthetic error so the trail
+          // is reconstructible even after the malformed gate ages out of logs.
+          try {
+            await appendAudit(paperId, {
+              id: `stranded_${Date.now()}`,
+              seq: 0,
+              createdAt: new Date().toISOString(),
+              type: "turn.done",
+              payload: { state: "error", strandedDetail: detail, originalRequiredActions: event.payload.requiredActions },
+            } as unknown as LiveEvent);
+          } catch { /* best-effort audit for stranded */ }
           try {
             await query(`UPDATE papers SET status = 'error', updated_at = now() WHERE id = $1 AND NOT halted`, [paperId]);
           } catch (e2) {
             console.error("[stream] stranded papers.status=error update failed:", (e2 as Error).message);
           }
-          // The reduced state is now done (not paused) after filtering; push
-          // an error terminal so the stream closes and the client flips to error.
           safeEnqueue(sseLine("turn.error", { state: "error" }));
-          try {
-            await query(`UPDATE papers SET status = 'error', updated_at = now() WHERE id = $1 AND NOT halted`, [paperId]);
-          } catch { /* best-effort */ }
           return { terminal: true, next: { ...next, status: "error", terminal: { kind: "error" } } as typeof next };
         }
         // Phase 5.1 — cap guard. Usage arrives with the metrics on
