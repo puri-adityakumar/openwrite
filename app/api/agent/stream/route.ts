@@ -407,22 +407,38 @@ export async function buildStream(input: {
             // the lock due to a DB error. Re-read the paper to disambiguate.
             console.error("[stream] stranded cap check failed:", (e as Error).message);
             try {
-              const st = await query<{ halted: boolean; halt_reason: string | null }>(
-                `SELECT halted, halt_reason FROM papers WHERE id = $1 LIMIT 1`,
+              const st = await query<{
+                halted: boolean;
+                halt_reason: string | null;
+                cap_usd: string | number | null;
+                cap_tokens: number | null;
+              }>(
+                `SELECT halted, halt_reason, cap_usd, cap_tokens FROM papers WHERE id = $1 LIMIT 1`,
                 [paperId],
               );
               const row = st.rows[0];
               if (row?.halted && row.halt_reason === "cap") {
                 // Lock committed but audit may have failed — retry the cap audit
-                // so the durable timeline is reconstructible (Qodo: Cap audit never retried).
+                // idempotently and with full limit context (Qodo: Cap audit never
+                // retried + Cap retry loses limit context + can duplicate audits).
                 try {
-                  await appendAuditEvent(paperId, {
-                    type: "cap.exceeded",
-                    payload: {
-                      totalTokens: m.totalTokens ?? 0,
-                      totalCostInUsd: m.totalCostInUsd ?? 0,
-                    },
-                  });
+                  const exists = await query(
+                    `SELECT 1 FROM audit WHERE paper_id = $1 AND events->>'type' = 'cap.exceeded' LIMIT 1`,
+                    [paperId],
+                  );
+                  if (exists.rows.length === 0) {
+                    await appendAuditEvent(paperId, {
+                      type: "cap.exceeded",
+                      payload: {
+                        totalTokens: m.totalTokens ?? 0,
+                        totalCostInUsd: m.totalCostInUsd ?? 0,
+                        capTokens: row.cap_tokens,
+                        capUsd: row.cap_usd == null ? null : Number(row.cap_usd),
+                      },
+                    });
+                  } else {
+                    console.log("[stream] cap audit already present — skipping duplicate retry");
+                  }
                 } catch (e3) {
                   console.error("[stream] cap audit retry failed:", (e3 as Error).message);
                 }
@@ -446,17 +462,19 @@ export async function buildStream(input: {
                 payload: { message: capDetail, metrics: m },
               } as unknown as LiveEvent);
             } catch { /* best-effort */ }
-            // Persist error status — if this fails the paper stays running and
-            // replay will be blocked (lib/replay.ts checks status running).
-            // Do not silently swallow; surface the persistence failure.
+            // Persist error status — retry once; if still failing, surface a
+            // stable client message without raw DB details (Qodo: Database error
+            // details exposed + Status failure leaves run live).
             try {
               await query(`UPDATE papers SET status = 'error', updated_at = now() WHERE id = $1 AND NOT halted`, [paperId]);
             } catch (e3) {
               console.error("[stream] cap-check status=error update failed:", (e3 as Error).message);
-              safeEnqueue(sseLine("turn.error", { message: "failed to persist error status — run may remain live", detail: (e3 as Error).message }));
-              // Fail closed: do not claim terminal error was durably stored.
-              // The caller sees turn.error and the DB remains running so replay
-              // is correctly blocked until the DB recovers (Qodo: Status failure leaves run live).
+              try {
+                await query(`UPDATE papers SET status = 'error', updated_at = now() WHERE id = $1 AND NOT halted`, [paperId]);
+              } catch (e4) {
+                console.error("[stream] cap-check status retry failed:", (e4 as Error).message);
+                safeEnqueue(sseLine("turn.error", { message: "failed to persist error status — run may remain live" }));
+              }
             }
             return { terminal: true, next: { ...next, status: "error", terminal: { kind: "error" } } as typeof next };
           }
@@ -478,6 +496,12 @@ export async function buildStream(input: {
             await query(`UPDATE papers SET status = 'error', updated_at = now() WHERE id = $1 AND NOT halted`, [paperId]);
           } catch (e2) {
             console.error("[stream] stranded papers.status=error update failed:", (e2 as Error).message);
+            try {
+              await query(`UPDATE papers SET status = 'error', updated_at = now() WHERE id = $1 AND NOT halted`, [paperId]);
+            } catch (e3) {
+              console.error("[stream] stranded status retry failed:", (e3 as Error).message);
+              safeEnqueue(sseLine("turn.error", { message: "failed to persist error status — run may remain live" }));
+            }
           }
           safeEnqueue(sseLine("turn.error", { state: "error" }));
           return { terminal: true, next: { ...next, status: "error", terminal: { kind: "error" } } as typeof next };
